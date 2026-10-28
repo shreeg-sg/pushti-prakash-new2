@@ -1,0 +1,81 @@
+name: Build Android APK
+
+on:
+ workflow_dispatch:
+ inputs:
+ firebase_url:
+ description: "Tenant data.json URL"
+ required: true
+ type: string
+ app_version:
+ description: "Application version"
+ required: false
+ default: "1.0.0"
+ type: string
+
+jobs:
+ build:
+ runs-on: ubuntu-latest
+
+ steps:
+ - name: Checkout
+ uses: actions/checkout@v4
+
+ - name: Setup Node
+ uses: actions/setup-node@v4
+ with:
+ node-version: 20
+ cache: npm
+
+ - name: Install dependencies
+ run: npm ci
+
+ - name: Configure tenant environment
+ env:
+ FIREBASE_URL: ${{ inputs.firebase_url }}
+ APP_VERSION: ${{ inputs.app_version }}
+ run: |
+ node <<'NODE'
+ const fs = require('fs');
+
+ const firebaseUrl = process.env.FIREBASE_URL;
+ const appVersion = process.env.APP_VERSION;
+
+ const content = `
+ export const environment = {
+ production: true,
+ dataUrl: ${JSON.stringify(firebaseUrl)},
+ appVersion: ${JSON.stringify(appVersion)}
+ };
+ `;
+
+ fs.writeFileSync(
+ 'src/environments/environment.prod.ts',
+ content
+ );
+ NODE
+
+ - name: Build Angular
+ run: npm run build -- --configuration production
+
+ - name: Sync Capacitor
+ run: npx cap sync android
+
+ - name: Setup Java
+ uses: actions/setup-java@v4
+ with:
+ distribution: temurin
+ java-version: "17"
+
+ - name: Make Gradle executable
+ run: chmod +x android/gradlew
+
+ - name: Build debug APK
+ working-directory: android
+ run:./gradlew assembleDebug
+
+ - name: Upload APK
+ uses: actions/upload-artifact@v4
+ with:
+ name: tenant-reader-apk
+ path: android/app/build/outputs/apk/debug/app-debug.apk

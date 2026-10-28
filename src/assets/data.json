@@ -1,0 +1,129 @@
+{
+    "updatedAt": "2026-10-28T12:00:00.000Z",
+    "app_identity": {
+    "appName": "PushtiPrakash",
+    "logoUrl": "https://example.web.app/assets/logo.png",
+    "watermarkUrl": "https://example.web.app/assets/watermark.png",
+    "theme": {
+    "primary": "#7b1e1e",
+    "secondary": "#d49a2a",
+    "tertiary": "#f4e4bd",
+    "background": "#fffaf0"
+    }
+    },
+    "supportedLanguages": [
+    {
+    "code": "en",
+    "name": "English",
+    "enabled": true
+    },
+    {
+    "code": "hi",
+    "name": "हिन्दी",
+    "enabled": true
+    },
+    {
+    "code": "gu",
+    "name": "ગુજરાતી",
+    "enabled": false
+    }
+    ],
+    "ui_translations": {
+    "dashboard.title": {
+    "en": "Dashboard",
+    "hi": "डैशबोर्ड"
+    },
+    "bookmarks.title": {
+    "en": "Bookmarks",
+    "hi": "बुकमार्क"
+    },
+    "about.title": {
+    "en": "About Us",
+    "hi": "हमारे बारे में"
+    },
+    "welcome.message": {
+    "en": "Welcome to PushtiPrakash",
+    "hi": "पुष्टिप्रकाश में आपका स्वागत है"
+    },
+    "reader.listen": {
+    "en": "Listen with text-to-speech",
+    "hi": "टेक्स्ट-टू-स्पीच से सुनें"
+    },
+    "reader.bookmark": {
+    "en": "Bookmark",
+    "hi": "बुकमार्क"
+    }
+    },
+    "about_info": {
+    "title": {
+    "en": "About PushtiPrakash",
+    "hi": "पुष्टिप्रकाश के बारे में"
+    },
+    "body": {
+    "en": "This application provides access to devotional reading and audio content.",
+    "hi": "यह एप्लिकेशन भक्ति पठन और ऑडियो सामग्री उपलब्ध कराता है।"
+    },
+    "feedback_links": {
+    "en": "https://forms.google.com/example-en",
+    "hi": "https://forms.google.com/example-hi"
+    }
+    },
+    "books": [
+    {
+    "id": "book-1",
+    "title": {
+    "en": "Daily Reading",
+    "hi": "दैनिक पठन"
+    },
+    "coverImage": "https://example.web.app/assets/daily-reading.png",
+    "isVisible": true,
+    "chapters": [
+    {
+    "id": "chapter-1",
+    "title": {
+    "en": "Morning Prayer",
+    "hi": "प्रातः प्रार्थना"
+    },
+    "transcript": {
+    "en": "Begin the day with remembrance and gratitude.",
+    "hi": "स्मरण और कृतज्ञता के साथ दिन का आरंभ करें।"
+    },
+    "audioPath": "https://example.web.app/audio/morning-prayer.mp3",
+    "isVisible": true
+    },
+    {
+    "id": "chapter-2",
+    "title": {
+    "en": "Evening Reflection",
+    "hi": "संध्या चिंतन"
+    },
+    "transcript": {
+    "en": "Reflect on the day with peace and devotion.",
+    "hi": "शांति और भक्ति के साथ दिन का चिंतन करें।"
+    },
+    "audioPath": "",
+    "isVisible": true
+    }
+    ]
+    }
+    ],
+    "notification_schedules": [
+    {
+    "id": 1001,
+    "title": {
+    "en": "Daily Reading",
+    "hi": "दैनिक पठन"
+    },
+    "body": {
+    "en": "Your daily reading is ready.",
+    "hi": "आपका दैनिक पठन तैयार है।"
+    },
+    "scheduleAt": "2026-10-29T06:30:00.000Z",
+    "repeats": "day",
+    "hour": 6,
+    "minute": 30,
+    "enabled": true
+    }
+    ]
+   }
+   
