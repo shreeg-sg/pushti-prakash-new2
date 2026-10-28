@@ -1,0 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+:root {
+  --ion-font-family: 'Inter', system-ui, sans-serif;
+  --ion-color-primary: #0284c7;
+  --ion-color-primary-shade: #0369a1;
+  --ion-color-primary-tint: #0ea5e9;
+}
