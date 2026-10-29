@@ -1,57 +1,113 @@
-import { Injectable } from '@angular/core';
+import { Injectable, NgZone, OnDestroy } from '@angular/core';
+import { Router } from '@angular/router';
+import { Capacitor, PluginListenerHandle } from '@capacitor/core';
 import {
- LocalNotifications,
- ScheduleOptions
+  LocalNotifications,
+  LocalNotificationSchema,
+  ActionPerformed
 } from '@capacitor/local-notifications';
-import { DataService } from './data.service';
 
-@Injectable({ providedIn: 'root' })
-export class NotificationService {
- constructor(private dataService: DataService) {}
+import { NotificationSchedule } from '../models/app-config.model';
 
- async initialize(): Promise<void> {
- const permission =
- await LocalNotifications.requestPermissions();
+@Injectable({
+  providedIn: 'root'
+})
+export class NotificationService implements OnDestroy {
+  private actionListener?: PluginListenerHandle;
+  private isInitialized = false;
 
- if (permission.display !== 'granted') {
- return;
- }
+  constructor(
+    private router: Router,
+    private ngZone: NgZone
+  ) {}
 
- await this.scheduleFromConfig();
- }
+  /**
+   * Registers the tap listener for local notifications so deep links to books/chapters open cleanly.
+   */
+  public async initialize(): Promise<void> {
+    if (this.isInitialized || !Capacitor.isNativePlatform()) return;
+    this.isInitialized = true;
 
- async scheduleFromConfig(): Promise<void> {
- const config = this.dataService.currentConfig;
+    this.actionListener = await LocalNotifications.addListener(
+      'localNotificationActionPerformed',
+      (event: ActionPerformed) => {
+        const extra = event.notification?.extra;
+        if (extra?.targetBookId && extra?.targetChapterId) {
+          this.ngZone.run(() => {
+            this.router.navigate(['/reader', extra.targetBookId, extra.targetChapterId]);
+          });
+        } else {
+          this.ngZone.run(() => {
+            this.router.navigate(['/dashboard']);
+          });
+        }
+      }
+    );
+  }
 
- if (!config) {
- return;
- }
+  /**
+   * Requests permission, clears old scheduled notifications, and schedules new ones from JSON.
+   */
+  public async rescheduleNotifications(
+    schedules: NotificationSchedule[],
+    langCode: string
+  ): Promise<void> {
+    if (!Capacitor.isNativePlatform()) return;
 
- await LocalNotifications.cancel({
- notifications: config.notification_schedules.map(item => ({
- id: item.id
- }))
- });
+    try {
+      await this.initialize();
 
- const notifications = config.notification_schedules
-.filter(item => item.enabled)
-.map(item => {
- const scheduleAt = new Date(item.scheduleAt);
+      // 1. Check & request permissions
+      let permStatus = await LocalNotifications.checkPermissions();
+      if (permStatus.display === 'prompt' || permStatus.display === 'prompt-with-rationale') {
+        permStatus = await LocalNotifications.requestPermissions();
+      }
+      if (permStatus.display !== 'granted') {
+        return;
+      }
 
- return {
- id: item.id,
- title: item.title.en ?? 'Reminder',
- body: item.body.en ?? '',
- schedule: {
- at: scheduleAt,
- repeats: item.repeats && item.repeats !== 'none',
- every: item.repeats === 'day' ? 'day' : undefined
- },
- sound: undefined
- };
- });
+      // 2. Clear all previously pending notifications to avoid duplicates or stale schedules
+      const pending = await LocalNotifications.getPending();
+      if (pending.notifications.length > 0) {
+        await LocalNotifications.cancel({ notifications: pending.notifications });
+      }
 
- const options: ScheduleOptions = { notifications };
- await LocalNotifications.schedule(options);
- }
+      // 3. Filter active schedules and map to Capacitor LocalNotificationSchema
+      const activeSchedules = (schedules || []).filter(item => item.isEnabled);
+      if (activeSchedules.length === 0) return;
+
+      const notificationsToSchedule: LocalNotificationSchema[] = activeSchedules.map(item => ({
+        id: item.id,
+        title: this.resolveText(item.title, langCode),
+        body: this.resolveText(item.body, langCode),
+        schedule: {
+          on: {
+            hour: item.hour,
+            minute: item.minute
+          },
+          repeats: item.repeatsDaily ?? true,
+          allowWhileIdle: true
+        },
+        extra: {
+          targetBookId: item.targetBookId || null,
+          targetChapterId: item.targetChapterId || null
+        }
+      }));
+
+      await LocalNotifications.schedule({
+        notifications: notificationsToSchedule
+      });
+    } catch (error) {
+      console.warn('[NotificationService] Failed to reschedule local notifications:', error);
+    }
+  }
+
+  private resolveText(mapObj: Record<string, string> | undefined, langCode: string): string {
+    if (!mapObj) return '';
+    return mapObj[langCode] || mapObj['en'] || mapObj['hi'] || Object.values(mapObj)[0] || '';
+  }
+
+  ngOnDestroy(): void {
+    this.actionListener?.remove();
+  }
 }

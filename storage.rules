@@ -1,0 +1,50 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper functions
+    function isAdmin() {
+      return request.auth != null && request.auth.token.admin == true;
+    }
+
+    function isTenantAdmin(clientKey) {
+      return isAdmin() || (request.auth != null && request.auth.token.clientKey == clientKey);
+    }
+
+    // 1. Multi-Tenant Folder Structure: /tenants/{clientKey}/...
+    match /tenants/{clientKey}/{allPaths=**} {
+      allow read: if true;
+    }
+
+    match /tenants/{clientKey}/config/{fileName} {
+      allow write: if isTenantAdmin(clientKey)
+                   && fileName.matches('.*\\.json$')
+                   && request.resource.contentType.matches('application/json.*')
+                   && request.resource.size < 10 * 1024 * 1024; // Max 10 MB JSON
+    }
+
+    match /tenants/{clientKey}/branding/{fileName} {
+      allow write: if isTenantAdmin(clientKey)
+                   && request.resource.contentType.matches('image/.*')
+                   && request.resource.size < 5 * 1024 * 1024; // Max 5 MB image
+    }
+
+    match /tenants/{clientKey}/covers/{fileName} {
+      allow write: if isTenantAdmin(clientKey)
+                   && request.resource.contentType.matches('image/.*')
+                   && request.resource.size < 5 * 1024 * 1024;
+    }
+
+    match /tenants/{clientKey}/audio/{lang}/{fileName} {
+      allow write: if isTenantAdmin(clientKey)
+                   && request.resource.contentType.matches('audio/.*')
+                   && request.resource.size < 50 * 1024 * 1024; // Max 50 MB MP3
+    }
+
+    // 2. Single-Tenant Root Fallback (/branding, /covers, /audio)
+    match /{folder}/{allPaths=**} {
+      allow read: if folder in ['branding', 'covers', 'audio', 'config'];
+      allow write: if isAdmin();
+    }
+  }
+}

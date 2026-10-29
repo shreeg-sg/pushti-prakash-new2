@@ -1,65 +1,89 @@
-export interface ThemeConfig {
-    primary: string;
-    secondary: string;
-    tertiary: string;
-    background: string;
-   }
-   
-   export interface AppIdentity {
-    appName: string;
-    logoUrl: string;
-    watermarkUrl?: string;
-    theme: ThemeConfig;
-   }
-   
-   export interface SupportedLanguage {
-    code: string;
-    name: string;
-    enabled: boolean;
-   }
-   
-   export type TranslationMap = Record<string, Record<string, string>>;
-   
-   export interface AboutInfo {
-    title: string;
-    body: string;
-    feedback_links: Record<string, string>;
-   }
-   
-   export interface Chapter {
-    id: string;
-    title: Record<string, string>;
-    transcript: Record<string, string>;
-    audioPath?: string;
-    isVisible: boolean;
-   }
-   
-   export interface Book {
-    id: string;
-    title: Record<string, string>;
-    coverImage: string;
-    isVisible: boolean;
-    chapters: Chapter[];
-   }
-   
-   export interface NotificationSchedule {
-    id: number;
-    title: Record<string, string>;
-    body: Record<string, string>;
-    scheduleAt: string;
-    repeats?: 'none' | 'day' | 'week' | 'month';
-    hour?: number;
-    minute?: number;
-    enabled: boolean;
-   }
-   
-   export interface AppConfig {
-    app_identity: AppIdentity;
-    supportedLanguages: SupportedLanguage[];
-    ui_translations: TranslationMap;
-    about_info: AboutInfo;
-    books: Book[];
-    notification_schedules: NotificationSchedule[];
-    updatedAt: string;
-   }
-   
+export type FontSizeScale = 'small' | 'medium' | 'large';
+
+export interface BookmarkEntry {
+  bookId: string;
+  chapterId: string;
+  savedAtIso: string;
+}
+
+export interface ThemeColors {
+  primary: string;
+  secondary: string;
+  tertiary: string;
+  background: string;
+  surface?: string;
+  textPrimary?: string;
+  textSecondary?: string;
+}
+
+export interface AppIdentity {
+  appName: Record<string, string>; // Localized app title or default string
+  defaultAppName: string;
+  logoUrl: string;
+  watermarkUrl: string;
+  theme: ThemeColors;
+}
+
+export interface SupportedLanguage {
+  code: string;       // e.g., 'hi', 'gu', 'mr', 'en'
+  name: string;       // e.g., 'हिन्दी', 'ગુજરાતી', 'मराठी', 'English'
+  ttsLocale: string;  // e.g., 'hi-IN', 'gu-IN', 'mr-IN', 'en-IN'
+  isEnabled: boolean; // Remote toggle to enable/disable language
+}
+
+export type LocalizedStringMap = Record<string, string>;
+
+export interface UiTranslations {
+  [uiKey: string]: LocalizedStringMap;
+}
+
+export interface AboutInfo {
+  description: LocalizedStringMap;
+  contactEmail?: string;
+  websiteUrl?: string;
+  feedback_links: LocalizedStringMap; // Maps language code ('hi', 'en') to Google Form URL
+}
+
+export interface Chapter {
+  id: string;
+  order: number;
+  isVisible: boolean;
+  title: LocalizedStringMap;
+  transcript: LocalizedStringMap;
+  audioUrl: LocalizedStringMap; // Empty string "" triggers native TTS fallback
+  durationSeconds?: number;
+}
+
+export interface Book {
+  id: string;
+  order: number;
+  isVisible: boolean;
+  coverImageUrl: string;
+  title: LocalizedStringMap;
+  subtitle?: LocalizedStringMap;
+  chapters: Chapter[];
+}
+
+export interface NotificationSchedule {
+  id: number;
+  isEnabled: boolean;
+  title: LocalizedStringMap;
+  body: LocalizedStringMap;
+  hour: number;       // 24-hour format (0-23)
+  minute: number;     // (0-59)
+  repeatsDaily: boolean;
+  targetBookId?: string;
+  targetChapterId?: string;
+}
+
+export interface AppConfigPayload {
+  schemaVersion: number;
+  lastUpdatedIso: string;
+  updateBannerMessage?: LocalizedStringMap;
+  app_identity: AppIdentity;
+  supportedLanguages: SupportedLanguage[];
+  ui_translations: UiTranslations;
+  about_info: AboutInfo;
+  books: Book[];
+  notification_schedules: NotificationSchedule[];
+}

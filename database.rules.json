@@ -1,0 +1,49 @@
+{
+    "rules": {
+      ".read": false,
+      ".write": false,
+  
+      "app_config": {
+        ".read": true,
+        ".write": "auth != null && auth.token.admin === true",
+        ".validate": "newData.hasChildren(['schemaVersion', 'lastUpdatedIso', 'app_identity', 'supportedLanguages', 'ui_translations', 'books'])",
+  
+        "app_identity": {
+          ".validate": "newData.hasChildren(['defaultAppName', 'theme'])",
+          "theme": {
+            ".validate": "newData.hasChildren(['primary', 'secondary', 'tertiary', 'background'])",
+            "primary": {
+              ".validate": "newData.isString() && newData.val().matches(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)"
+            },
+            "secondary": {
+              ".validate": "newData.isString() && newData.val().matches(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)"
+            },
+            "tertiary": {
+              ".validate": "newData.isString() && newData.val().matches(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)"
+            },
+            "background": {
+              ".validate": "newData.isString() && newData.val().matches(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)"
+            }
+          }
+        }
+      },
+  
+      "tenants": {
+        "$clientKey": {
+          "app_config": {
+            ".read": true,
+            ".write": "auth != null && (auth.token.admin === true || auth.token.clientKey === $clientKey)",
+            ".validate": "newData.hasChildren(['schemaVersion', 'lastUpdatedIso', 'app_identity', 'supportedLanguages', 'ui_translations', 'books'])",
+  
+            "app_identity": {
+              ".validate": "newData.hasChildren(['defaultAppName', 'theme'])",
+              "theme": {
+                ".validate": "newData.hasChildren(['primary', 'secondary', 'tertiary', 'background'])"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  

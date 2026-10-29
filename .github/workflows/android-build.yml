@@ -1,81 +1,102 @@
-name: Build Android APK
+name: White-Label Android APK Build
 
 on:
- workflow_dispatch:
- inputs:
- firebase_url:
- description: "Tenant data.json URL"
- required: true
- type: string
- app_version:
- description: "Application version"
- required: false
- default: "1.0.0"
- type: string
+  workflow_dispatch:
+    inputs:
+      client_key:
+        description: 'Unique Client Slug (e.g., pushtiprakash, another-reader)'
+        required: true
+        default: 'pushtiprakash'
+        type: string
+      app_name:
+        description: 'Initial Native App Display Name'
+        required: true
+        default: 'PushtiPrakash'
+        type: string
+      app_id:
+        description: 'Android Application ID / Package Name'
+        required: true
+        default: 'com.sameergujarathi.pushtiprakash'
+        type: string
+      firebase_config_url:
+        description: 'Remote Firebase JSON Config URL for this Client'
+        required: true
+        default: 'https://pushtiprakash-prod-default-rtdb.asia-southeast1.firebasedatabase.app/app_config.json'
+        type: string
+      build_version:
+        description: 'Semantic App Version (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+        type: string
 
 jobs:
- build:
- runs-on: ubuntu-latest
+  build-client-apk:
+    name: Build APK for ${{ inputs.client_key }}
+    runs-on: ubuntu-latest
 
- steps:
- - name: Checkout
- uses: actions/checkout@v4
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
- - name: Setup Node
- uses: actions/setup-node@v4
- with:
- node-version: 20
- cache: npm
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
 
- - name: Install dependencies
- run: npm ci
+      - name: Set up JDK 17 for Capacitor Android
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
 
- - name: Configure tenant environment
- env:
- FIREBASE_URL: ${{ inputs.firebase_url }}
- APP_VERSION: ${{ inputs.app_version }}
- run: |
- node <<'NODE'
- const fs = require('fs');
+      - name: Install NPM Dependencies
+        run: npm ci
 
- const firebaseUrl = process.env.FIREBASE_URL;
- const appVersion = process.env.APP_VERSION;
+      - name: Inject Client Firebase URL & Version into environment.prod.ts
+        env:
+          CLIENT_KEY: ${{ inputs.client_key }}
+          FIREBASE_URL: ${{ inputs.firebase_config_url }}
+          BUILD_VERSION: ${{ inputs.build_version }}
+        run: |
+          sed -i "s|__CLIENT_KEY__|${CLIENT_KEY}|g" src/environments/environment.prod.ts
+          sed -i "s|__FIREBASE_CONFIG_URL__|${FIREBASE_URL}|g" src/environments/environment.prod.ts
+          sed -i "s|__BUILD_VERSION__|${BUILD_VERSION}|g" src/environments/environment.prod.ts
+          cat src/environments/environment.prod.ts
 
- const content = `
- export const environment = {
- production: true,
- dataUrl: ${JSON.stringify(firebaseUrl)},
- appVersion: ${JSON.stringify(appVersion)}
- };
- `;
+      - name: Stamp Client App ID and Name in Capacitor Config & Android Manifest
+        env:
+          APP_ID: ${{ inputs.app_id }}
+          APP_NAME: ${{ inputs.app_name }}
+        run: |
+          npx json -I -f capacitor.config.json -e "this.appId='${APP_ID}'; this.appName='${APP_NAME}';" || true
+          if [ -f "android/app/src/main/res/values/strings.xml" ]; then
+            sed -i "s|<string name=\"app_name\">.*</string>|<string name=\"app_name\">${APP_NAME}</string>|g" android/app/src/main/res/values/strings.xml
+            sed -i "s|<string name=\"title_activity_main\">.*</string>|<string name=\"title_activity_main\">${APP_NAME}</string>|g" android/app/src/main/res/values/strings.xml
+          fi
 
- fs.writeFileSync(
- 'src/environments/environment.prod.ts',
- content
- );
- NODE
+      - name: Build Angular Production Web Bundle
+        run: npm run build -- --configuration=production
 
- - name: Build Angular
- run: npm run build -- --configuration production
+      - name: Sync Capacitor Android Project
+        run: npx cap sync android
 
- - name: Sync Capacitor
- run: npx cap sync android
+      - name: Build Android APK (Debug / Unsigned Release)
+        working-directory: ./android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
- - name: Setup Java
- uses: actions/setup-java@v4
- with:
- distribution: temurin
- java-version: "17"
+      - name: Rename APK for Client Delivery
+        run: |
+          mkdir -p dist-apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             "dist-apk/${{ inputs.client_key }}-v${{ inputs.build_version }}.apk"
 
- - name: Make Gradle executable
- run: chmod +x android/gradlew
-
- - name: Build debug APK
- working-directory: android
- run:./gradlew assembleDebug
-
- - name: Upload APK
- uses: actions/upload-artifact@v4
- with:
- name: tenant-reader-apk
- path: android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Upload Client APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.client_key }}-v${{ inputs.build_version }}-apk
+          path: dist-apk/${{ inputs.client_key }}-v${{ inputs.build_version }}.apk
+          retention-days: 30

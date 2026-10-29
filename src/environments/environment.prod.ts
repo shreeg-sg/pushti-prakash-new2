@@ -1,9 +1,8 @@
 export const environment = {
     production: true,
-   
-    dataUrl:
-    'https://firebasestorage.googleapis.com/v0/b/pushtiprakash.firebasestorage.app/o/data.json?alt=media',
-   
-    appVersion: '1.0.0'
-   };
-   
+    appVersion: '__BUILD_VERSION__',
+    clientKey: '__CLIENT_KEY__',
+    firebaseConfigUrl: '__FIREBASE_CONFIG_URL__',
+    fallbackMockPath: 'assets/mock/data.json',
+    developerCredit: 'Developed by Sameer Purushottam Gujarathi'
+  };
