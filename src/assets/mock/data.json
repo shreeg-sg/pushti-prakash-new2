@@ -4,7 +4,7 @@
   "updateBannerMessage": {
     "hi": "नया अध्याय जोड़ा गया: श्री यमुनाष्टकम् अर्थ सहित!",
     "gu": "નવું પ્રકરણ ઉમેરાયું: શ્રી યમુનાષ્ટકમ્ અર્થ સાથે!",
-    "en": "New chapter added: Shri Yamunashtakam with translation!Sam"
+    "en": "New chapter added: Shri Yamunashtakam with translation!"
   },
   "app_identity": {
     "defaultAppName": "PushtiPrakash",
@@ -191,9 +191,9 @@
             "en": "Namami Yamunamaham Sakala-Siddhi-Hetum Muda\nMurari-Pada-Pankaja-Sphurad-Amanda-Renutkatam...\n\nMeaning: I joyfully bow to Shri Yamuna, the bestower of all spiritual perfection..."
           },
           "audioUrl": {
-            "hi": "audio/yamunashtakam.mp3",
-            "gu": "audio/yamunashtakam.mp3",
-            "en": "audio/yamunashtakam.mp3"
+            "hi": "audio/MANGALACHARANAM.mp3",
+            "gu": "audio/MANGALACHARANAM.mp3",
+            "en": "audio/MANGALACHARANAM.mp3"
           },
           "durationSeconds": 245
         },

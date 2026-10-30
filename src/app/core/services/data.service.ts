@@ -5,7 +5,7 @@ import { map, filter } from 'rxjs/operators';
 import { App, AppState } from '@capacitor/app';
 import { Network } from '@capacitor/network';
 import { Preferences } from '@capacitor/preferences';
-import { PluginListenerHandle } from '@capacitor/core';
+import { PluginListenerHandle, Capacitor } from '@capacitor/core';
 
 import { environment } from '../../../environments/environment';
 import {
@@ -45,10 +45,6 @@ export class DataService implements OnDestroy {
     map(cfg => cfg.app_identity)
   );
 
-  /**
-   * Direct reactive watermark URL stream. Resolves relative paths against mediaBaseUrl
-   * and automatically falls back to logoUrl.
-   */
   public readonly watermarkUrl$: Observable<string> = this.identity$.pipe(
     map(identity => {
       const url = identity?.watermarkUrl || identity?.logoUrl;
@@ -111,16 +107,18 @@ export class DataService implements OnDestroy {
   }
 
   /**
-   * Hot-Update Synchronizer:
-   * Works seamlessly with GitHub Raw URLs, jsDelivr CDN URLs, or Firebase RTDB URLs.
-   * Uses cache-busting timestamp `?t=${Date.now()}` so commits on GitHub update immediately.
+   * Hot-Update Synchronizer with Cache-Busting:
+   * Uses navigator.onLine for web compatibility, cache-busting timestamp (?t=...),
+   * and Cache-Control headers to defeat Fastly/GitHub edge caching.
    */
   public async syncWithRemote(): Promise<boolean> {
     this.isSyncingSubject.next(true);
     try {
       const status = await Network.getStatus();
+      const isOnline = Capacitor.isNativePlatform() ? status.connected : navigator.onLine;
 
-      if (!status.connected) {
+      if (!isOnline) {
+        console.log('[DataService] Device is offline. Using local cached configuration.');
         await this.ensureFallbackLoaded();
         return false;
       }
@@ -128,13 +126,20 @@ export class DataService implements OnDestroy {
       const endpoint = environment.firebaseConfigUrl;
       const separator = endpoint.includes('?') ? '&' : '?';
       const url = `${endpoint}${separator}t=${Date.now()}`;
-      const headers = new HttpHeaders({ 'Cache-Control': 'no-cache', Pragma: 'no-cache' });
+      const headers = new HttpHeaders({
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      });
+
+      console.log('[DataService] Fetching remote config from:', url);
 
       const remoteConfig = await firstValueFrom(
         this.http.get<AppConfigPayload>(url, { headers })
       );
 
       if (remoteConfig && remoteConfig.app_identity) {
+        console.log('[DataService] Successfully received remote config. Updating UI & local storage.');
         await Preferences.set({
           key: this.CACHE_KEY,
           value: JSON.stringify(remoteConfig)
@@ -146,8 +151,13 @@ export class DataService implements OnDestroy {
 
       await this.ensureFallbackLoaded();
       return false;
-    } catch (error) {
-      console.warn('[DataService] Remote fetch failed, using cached configuration:', error);
+    } catch (error: any) {
+      console.error('[DataService] Remote fetch failed from ' + environment.firebaseConfigUrl + ':', error);
+      if (error?.status === 404) {
+        console.error('[DataService] HTTP 404: The URL was not found. Please verify the GitHub repo is PUBLIC, the branch is correct (main vs master), and the file path is src/assets/mock/data.json.');
+      } else if (error?.status === 0) {
+        console.error('[DataService] HTTP 0 / CORS: Network blocked or offline.');
+      }
       await this.ensureFallbackLoaded();
       return false;
     } finally {
@@ -159,14 +169,19 @@ export class DataService implements OnDestroy {
     return this.syncWithRemote();
   }
 
+  /**
+   * Universal Media URL Resolver:
+   * - Images: uses jsDelivr CDN
+   * - Audio files (.mp3, .wav, .m4a): automatically switches to raw.githubusercontent.com for binary media streaming
+   */
   public resolveMediaUrl(urlOrPath: string | undefined): string {
     if (!urlOrPath) return '';
     let clean = urlOrPath.trim();
 
     if (clean.includes('github.com/') && clean.includes('/blob/')) {
       clean = clean
-        .replace(/^https?:\/\/github\.com\//, 'https://cdn.jsdelivr.net/gh/')
-        .replace('/blob/', '@');
+        .replace(/^https?:\/\/github\.com\//, 'https://raw.githubusercontent.com/')
+        .replace('/blob/', '/');
       return clean;
     }
 
@@ -177,9 +192,18 @@ export class DataService implements OnDestroy {
     const baseUrl = this.configSubject.value?.app_identity?.mediaBaseUrl;
     if (!baseUrl) return clean;
 
-    const sanitizedBase = baseUrl.replace(/\/+$/, '');
+    let base = baseUrl.replace(/\/+$/, '');
     const sanitizedPath = clean.replace(/^\/+/, '');
-    return `${sanitizedBase}/${sanitizedPath}`;
+
+    // For audio files, always use raw.githubusercontent.com (jsDelivr blocks media streaming)
+    const isAudio = ['.mp3', '.wav', '.m4a', '.ogg', '.aac'].some(ext => sanitizedPath.toLowerCase().endsWith(ext));
+    if (isAudio && base.includes('cdn.jsdelivr.net/gh/')) {
+      base = base
+        .replace('https://cdn.jsdelivr.net/gh/', 'https://raw.githubusercontent.com/')
+        .replace('@', '/');
+    }
+
+    return `${base}/${sanitizedPath}`;
   }
 
   public localizeField(fieldMap: Record<string, string> | undefined, langCode: string): string {

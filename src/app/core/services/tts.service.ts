@@ -10,9 +10,9 @@ export interface PlayerState {
   mode: PlaybackMode;
   isPlaying: boolean;
   isLoading: boolean;
-  currentTime: number;     // Seconds (for 'audio') or current chunk index (for 'tts')
-  duration: number;        // Total seconds (for 'audio') or total chunks (for 'tts')
-  playbackRate: number;    // e.g., 0.85, 1.0, 1.25, 1.5
+  currentTime: number; // Seconds (for 'audio') or current chunk index (for 'tts')
+  duration: number; // Total seconds (for 'audio') or total chunks (for 'tts')
+  playbackRate: number; // e.g., 0.75, 1.0, 1.25, 1.5, 2.0
   activeChunkText?: string;
 }
 
@@ -39,10 +39,6 @@ export class TtsService implements OnDestroy {
 
   constructor(private ngZone: NgZone) {}
 
-  /**
-   * Initializes playback source for the active chapter and language.
-   * Uses recorded audio if `audioUrl` is non-empty; otherwise prepares native TTS chunks.
-   */
   public async loadChapterMedia(params: {
     chapterId: string;
     langCode: string;
@@ -71,9 +67,6 @@ export class TtsService implements OnDestroy {
     }
   }
 
-  /**
-   * Toggles Play / Pause for whichever mode ('audio' or 'tts') is currently active.
-   */
   public async togglePlayPause(): Promise<void> {
     const state = this.stateSubject.value;
     if (state.isPlaying) {
@@ -92,7 +85,7 @@ export class TtsService implements OnDestroy {
         await this.audioElement.play();
         this.patchState({ isPlaying: true });
       } catch (err) {
-        console.warn('[TtsService] Audio playback failed, falling back to native TTS:', err);
+        console.warn('[TtsService] Audio play error; switching to TTS fallback:', err);
         this.switchToTtsFallback();
         await this.playTtsFromCurrentChunk();
       }
@@ -141,15 +134,12 @@ export class TtsService implements OnDestroy {
     });
   }
 
-  /**
-   * Seeks to a specific second (in 'audio' mode) or sentence chunk index (in 'tts' mode).
-   */
   public async seekTo(value: number): Promise<void> {
     const state = this.stateSubject.value;
 
     if (state.mode === 'audio' && this.audioElement) {
       this.audioElement.currentTime = Math.min(Math.max(0, value), state.duration);
-      this.patchState({ currentTime: this.audioElement.currentTime });
+      this.patchState({ currentTime: Math.floor(this.audioElement.currentTime) });
       return;
     }
 
@@ -180,14 +170,11 @@ export class TtsService implements OnDestroy {
     if (this.audioElement) {
       this.audioElement.playbackRate = rate;
     } else if (this.stateSubject.value.mode === 'tts' && this.stateSubject.value.isPlaying) {
-      // Restart current TTS chunk with updated playback speed
       this.isTtsCancelled = true;
       await this.stopNativeTtsEngine();
       await this.playTtsFromCurrentChunk();
     }
   }
-
-  // --- Internal Audio & Offline Caching Logic ---
 
   private async setupRecordedAudio(
     chapterId: string,
@@ -197,7 +184,17 @@ export class TtsService implements OnDestroy {
     this.patchState({ mode: 'audio', isLoading: true, isPlaying: false, currentTime: 0, duration: 0 });
 
     const playableUrl = await this.resolveOfflineOrRemoteAudioUrl(chapterId, langCode, remoteUrl);
-    const audio = new Audio(playableUrl);
+    console.log('[TtsService] Loading recorded audio from:', playableUrl);
+
+    if (this.audioElement) {
+      this.audioElement.pause();
+      this.audioElement.src = '';
+      this.audioElement = null;
+    }
+
+    const audio = new Audio();
+    audio.src = playableUrl;
+    audio.preload = 'metadata';
     this.audioElement = audio;
 
     audio.addEventListener('loadedmetadata', () => {
@@ -221,18 +218,14 @@ export class TtsService implements OnDestroy {
       });
     });
 
-    audio.addEventListener('error', () => {
+    audio.addEventListener('error', (err) => {
       this.ngZone.run(() => {
-        console.warn('[TtsService] Audio stream error; switching automatically to native TTS.');
+        console.warn(`[TtsService] Audio stream failed for ${playableUrl}. Switching to TTS fallback.`, err);
         this.switchToTtsFallback();
       });
     });
   }
 
-  /**
-   * Checks if the MP3 is already cached in Capacitor Filesystem (`Directory.Data`).
-   * If not cached and online, caches it in the background for offline reading.
-   */
   private async resolveOfflineOrRemoteAudioUrl(
     chapterId: string,
     langCode: string,
@@ -249,7 +242,6 @@ export class TtsService implements OnDestroy {
         return Capacitor.convertFileSrc(stat.uri);
       }
     } catch {
-      // File not cached yet; cache asynchronously in background
       this.cacheAudioInBackground(filePath, remoteUrl);
     }
     return remoteUrl;
@@ -264,11 +256,9 @@ export class TtsService implements OnDestroy {
         recursive: true
       });
     } catch {
-      // Ignore background download failure when offline
+      // Ignore background download failure
     }
   }
-
-  // --- Internal Native TTS Logic ---
 
   private switchToTtsFallback(): void {
     if (this.audioElement) {
@@ -301,21 +291,16 @@ export class TtsService implements OnDestroy {
       });
 
       try {
-        await TextToSpeech.speak({
-          text: chunkText,
-          lang: this.activeTtsLocale,
-          rate: this.stateSubject.value.playbackRate,
-          pitch: 1.0,
-          volume: 1.0,
-          category: 'playback'
-        });
+        await this.speakChunk(chunkText, this.activeTtsLocale, this.stateSubject.value.playbackRate);
 
         if (!this.isTtsCancelled) {
           this.currentChunkIndex++;
         }
       } catch (err) {
-        console.warn('[TtsService] Native TTS speak interrupted or failed:', err);
-        break;
+        console.warn('[TtsService] Chunk speak interrupted or failed:', err);
+        if (!this.isTtsCancelled) {
+          this.currentChunkIndex++;
+        }
       }
     }
 
@@ -331,11 +316,77 @@ export class TtsService implements OnDestroy {
     }
   }
 
+  /**
+   * Dual-Engine Speech Synthesizer:
+   * - Browser: Uses window.speechSynthesis (Web Speech API) with unfreeze cancel/resume
+   * - Android / iOS: Uses Capacitor TextToSpeech plugin with language code retry
+   */
+  private speakChunk(text: string, lang: string, rate: number): Promise<void> {
+    return new Promise(async (resolve, reject) => {
+      // 1. Native Android / iOS Device
+      if (Capacitor.isNativePlatform()) {
+        try {
+          await TextToSpeech.speak({
+            text,
+            lang,
+            rate,
+            pitch: 1.0,
+            volume: 1.0,
+            category: 'playback'
+          });
+          resolve();
+          return;
+        } catch (nativeErr) {
+          console.warn('[TtsService] Native TTS error, retrying with base language code:', nativeErr);
+          const shortLang = lang.split('-')[0];
+          try {
+            await TextToSpeech.speak({ text, lang: shortLang, rate, pitch: 1.0, volume: 1.0 });
+            resolve();
+            return;
+          } catch {
+            resolve(); // Do not break the reading loop
+            return;
+          }
+        }
+      }
+
+      // 2. Web Browser (ionic serve / ng serve)
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.resume();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = lang;
+        utterance.rate = rate;
+
+        utterance.onend = () => {
+          resolve();
+        };
+
+        utterance.onerror = (e) => {
+          console.warn('[TtsService] Web Speech utterance error:', e);
+          resolve(); // Resolve so the loop continues
+        };
+
+        window.speechSynthesis.speak(utterance);
+        return;
+      }
+
+      resolve();
+    });
+  }
+
   private async stopNativeTtsEngine(): Promise<void> {
-    try {
-      await TextToSpeech.stop();
-    } catch {
-      // Ignore if TTS engine was not actively speaking
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await TextToSpeech.stop();
+      } catch {
+        // Ignore
+      }
+    }
+
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
     }
   }
 
