@@ -9,12 +9,7 @@ import {
   IonButton,
   IonIcon,
   IonTitle,
-  IonSelect,
-  IonSelectOption,
   IonPopover,
-  IonList,
-  IonItem,
-  IonLabel,
   NavController
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
@@ -22,8 +17,9 @@ import {
   textOutline,
   languageOutline,
   arrowBackOutline,
-  checkmarkOutline,
-  closeOutline
+  closeOutline,
+  optionsOutline,
+  checkmarkOutline
 } from 'ionicons/icons';
 import { Observable, combineLatest } from 'rxjs';
 import { filter, map, startWith } from 'rxjs/operators';
@@ -44,16 +40,12 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
     IonButton,
     IonIcon,
     IonTitle,
-    IonSelect,
-    IonSelectOption,
-    IonPopover,
-    IonList,
-    IonItem,
-    IonLabel
+    IonPopover
   ],
   template: `
     <ion-header class="ion-no-border">
-      <ion-toolbar color="primary">
+      <ion-toolbar color="primary" class="main-header-toolbar">
+        <!-- Start Buttons: Menu or Back Navigation -->
         <ion-buttons slot="start">
           <ion-menu-button autoHide="false"></ion-menu-button>
           <ion-button
@@ -64,127 +56,149 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
           </ion-button>
         </ion-buttons>
 
+        <!-- Center Dynamic Title: Wrapped up to max 2 lines with ellipsis, responsive font -->
         <ion-title class="header-dynamic-title">
           {{ pageTitle || (resolvedRouteTitle$ | async) }}
         </ion-title>
 
+        <!-- End Buttons: Custom actions (Bookmark ⭐) + Single Merged Settings Trigger -->
         <ion-buttons slot="end">
           <ng-content select="[headerEndActions]"></ng-content>
 
-          <!-- Font Size Popover Trigger (Works across ALL pages using event-driven [isOpen]) -->
+          <!-- Single Merged Settings Trigger Button -->
           <ion-button
-            (click)="openFontPopover($event)"
-            [attr.aria-label]="(uiText$ | async)?.['font_size_title'] || 'Font Size'">
-            <ion-icon slot="icon-only" name="text-outline"></ion-icon>
+            class="settings-trigger-btn"
+            (click)="openSettingsPopover($event)"
+            aria-label="Reading Settings">
+            <ion-icon slot="icon-only" name="options-outline"></ion-icon>
           </ion-button>
 
-          <!-- Font Size Popover: 1st row has Title & Close/Cancel button -->
+          <!-- Unified Settings Popover (Sized comfortably with no word-breaks) -->
           <ion-popover
-            [isOpen]="isFontPopoverOpen"
-            [event]="fontPopoverEvent"
-            (didDismiss)="isFontPopoverOpen = false"
-            class="font-size-popover">
+            [isOpen]="isSettingsPopoverOpen"
+            [event]="settingsPopoverEvent"
+            (didDismiss)="isSettingsPopoverOpen = false"
+            class="header-settings-popover">
             <ng-template>
+              <!-- 1st Row: Header Bar with Title and Close Button -->
               <div class="popover-first-row">
-                <span class="popover-heading">{{ (uiText$ | async)?.['font_size_title'] || 'Font Size' }}</span>
+                <span class="popover-heading">
+                  {{ (uiText$ | async)?.['settings_title'] || 'Preferences' }}
+                </span>
                 <button
                   type="button"
                   class="popover-close-btn"
                   aria-label="Close"
-                  (click)="isFontPopoverOpen = false">
+                  (click)="isSettingsPopoverOpen = false">
                   <ion-icon name="close-outline"></ion-icon>
                 </button>
               </div>
-              <ion-list lines="full" class="font-options-list">
-                <ion-item
-                  button
-                  detail="false"
-                  [class.active-font-item]="(selectedFontSize$ | async) === 'small'"
-                  (click)="setFontScale('small')">
-                  <ion-label>{{ (uiText$ | async)?.['font_small'] || 'Small' }}</ion-label>
-                  <ion-icon slot="end" name="checkmark-outline" *ngIf="(selectedFontSize$ | async) === 'small'"></ion-icon>
-                </ion-item>
-                <ion-item
-                  button
-                  detail="false"
-                  [class.active-font-item]="(selectedFontSize$ | async) === 'medium'"
-                  (click)="setFontScale('medium')">
-                  <ion-label>{{ (uiText$ | async)?.['font_medium'] || 'Medium' }}</ion-label>
-                  <ion-icon slot="end" name="checkmark-outline" *ngIf="(selectedFontSize$ | async) === 'medium'"></ion-icon>
-                </ion-item>
-                <ion-item
-                  button
-                  detail="false"
-                  [class.active-font-item]="(selectedFontSize$ | async) === 'large'"
-                  (click)="setFontScale('large')">
-                  <ion-label>{{ (uiText$ | async)?.['font_large'] || 'Large' }}</ion-label>
-                  <ion-icon slot="end" name="checkmark-outline" *ngIf="(selectedFontSize$ | async) === 'large'"></ion-icon>
-                </ion-item>
-              </ion-list>
+
+              <div class="popover-body-content">
+                <!-- Section 1: Language Switcher (No word-breaks for 'English') -->
+                <div class="popover-section" *ngIf="(enabledLanguages$ | async) as languages">
+                  <div class="section-label-row">
+                    <ion-icon name="language-outline" color="primary"></ion-icon>
+                    <span class="section-label-text">
+                      {{ (uiText$ | async)?.['select_language_prompt'] || 'Language' }}
+                    </span>
+                  </div>
+                  <div class="pill-group">
+                    <button
+                      type="button"
+                      *ngFor="let lang of languages; trackBy: trackByLangCode"
+                      class="pill-btn"
+                      [class.active-pill]="(selectedLanguage$ | async) === lang.code"
+                      (click)="onLanguageChange(lang.code)">
+                      {{ lang.name }}
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Section 2: Font Size Scaling (No word-breaks for 'Medium') -->
+                <div class="popover-section">
+                  <div class="section-label-row">
+                    <ion-icon name="text-outline" color="primary"></ion-icon>
+                    <span class="section-label-text">
+                      {{ (uiText$ | async)?.['font_size_title'] || 'Font Size' }}
+                    </span>
+                  </div>
+                  <div class="pill-group">
+                    <button
+                      type="button"
+                      class="pill-btn"
+                      [class.active-pill]="(selectedFontSize$ | async) === 'small'"
+                      (click)="setFontScale('small')">
+                      {{ (uiText$ | async)?.['font_small'] || 'Small' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="pill-btn"
+                      [class.active-pill]="(selectedFontSize$ | async) === 'medium'"
+                      (click)="setFontScale('medium')">
+                      {{ (uiText$ | async)?.['font_medium'] || 'Medium' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="pill-btn"
+                      [class.active-pill]="(selectedFontSize$ | async) === 'large'"
+                      (click)="setFontScale('large')">
+                      {{ (uiText$ | async)?.['font_large'] || 'Large' }}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </ng-template>
           </ion-popover>
-
-          <!-- Language Dropdown -->
-          <div class="lang-select-wrapper" *ngIf="(enabledLanguages$ | async) as languages">
-            <ion-icon name="language-outline" class="lang-icon"></ion-icon>
-            <ion-select
-              *ngIf="languages.length > 0"
-              interface="popover"
-              [value]="selectedLanguage$ | async"
-              (ionChange)="onLanguageChange($event.detail.value)"
-              class="header-lang-select"
-              aria-label="Select Language">
-              <ion-select-option
-                *ngFor="let lang of languages; trackBy: trackByLangCode"
-                [value]="lang.code">
-                {{ lang.name }}
-              </ion-select-option>
-            </ion-select>
-          </div>
         </ion-buttons>
       </ion-toolbar>
     </ion-header>
   `,
   styles: [`
-    .header-dynamic-title {
-      font-weight: 600;
-      font-size: 1.05rem;
+    .main-header-toolbar {
+      --min-height: 56px;
+      padding: 0 4px;
+    }
+    /* Max 2 line header with natural word wrap and clean ellipsis */
+    ion-title.header-dynamic-title {
+      padding: 0 4px;
+      position: relative;
+    }
+    :host ::ng-deep ion-title.header-dynamic-title .toolbar-title,
+    ion-title.header-dynamic-title .toolbar-title {
+      white-space: normal !important;
+      display: -webkit-box !important;
+      -webkit-line-clamp: 2 !important;
+      -webkit-box-orient: vertical !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      word-break: normal !important;
+      overflow-wrap: break-word !important;
+      font-weight: 700;
+      font-size: clamp(0.85rem, 3.2vw, 1rem);
+      line-height: 1.25;
       text-align: center;
+      max-height: 2.6em;
     }
-    .lang-select-wrapper {
-      display: flex;
-      align-items: center;
-      background: rgba(255, 255, 255, 0.14);
-      border-radius: 16px;
-      padding: 0 8px;
-      margin-left: 4px;
-      margin-right: 6px;
+    .settings-trigger-btn {
+      --padding-start: 6px;
+      --padding-end: 6px;
+      font-size: 1.25rem;
     }
-    .lang-icon {
-      font-size: 1rem;
-      margin-right: 4px;
-      color: var(--ion-toolbar-color, #ffffff);
-    }
-    .header-lang-select {
-      --padding-start: 2px;
-      --padding-end: 2px;
-      --padding-top: 4px;
-      --padding-bottom: 4px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--ion-toolbar-color, #ffffff);
-      min-height: 30px;
+    .header-settings-popover {
+      --width: 300px;
+      --max-width: 92vw;
     }
     .popover-first-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 16px;
+      padding: 10px 14px;
       border-bottom: 1px solid rgba(0, 0, 0, 0.08);
       background: var(--ion-color-light, #f4f5f8);
     }
     .popover-heading {
-      font-size: 0.95rem;
+      font-size: 0.92rem;
       font-weight: 700;
       color: var(--ion-text-color, #2c1810);
     }
@@ -199,17 +213,70 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
       font-size: 1.3rem;
       color: var(--ion-color-medium, #666666);
       border-radius: 50%;
+      transition: background 0.15s ease;
 
       &:hover, &:active {
         background: rgba(0, 0, 0, 0.08);
       }
     }
-    .font-options-list {
-      padding: 4px 0;
+    .popover-body-content {
+      padding: 12px 14px 16px;
     }
-    .active-font-item {
-      --color: var(--ion-color-primary);
+    .popover-section {
+      margin-bottom: 14px;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+    .section-label-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .section-label-text {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--ion-color-medium, #666666);
+    }
+    /* Grid layout with minmax width ensures buttons fit comfortably */
+    .pill-group {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+      gap: 8px;
+    }
+    /* Responsive pill buttons with white-space: nowrap so 'English' and 'Medium' never break */
+    .pill-btn {
+      width: 100%;
+      padding: 9px 4px;
+      border-radius: 10px;
+      border: 1.5px solid rgba(var(--ion-color-primary-rgb), 0.22);
+      background: var(--ion-background-color, #ffffff);
+      color: var(--ion-text-color, #2c1810);
+      font-size: clamp(0.78rem, 2.5vw, 0.86rem);
       font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      white-space: nowrap !important;
+      word-break: keep-all !important;
+      hyphens: none !important;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      transition: all 0.18s ease;
+
+      &:hover {
+        background: rgba(var(--ion-color-primary-rgb), 0.06);
+      }
+    }
+    .pill-btn.active-pill {
+      border-color: var(--ion-color-primary);
+      background: var(--ion-color-primary);
+      color: var(--ion-color-primary-contrast, #ffffff);
+      font-weight: 700;
+      box-shadow: 0 2px 6px rgba(var(--ion-color-primary-rgb), 0.3);
     }
   `]
 })
@@ -222,8 +289,8 @@ export class HeaderComponent implements OnInit {
   @Input() pageTitle?: string;
   @Input() showBackButton?: boolean;
 
-  public isFontPopoverOpen = false;
-  public fontPopoverEvent: any = null;
+  public isSettingsPopoverOpen = false;
+  public settingsPopoverEvent: any = null;
 
   public enabledLanguages$: Observable<SupportedLanguage[]> = this.dataService.enabledLanguages$;
   public selectedLanguage$: Observable<string> = this.storageService.selectedLanguage$;
@@ -239,8 +306,9 @@ export class HeaderComponent implements OnInit {
       textOutline,
       languageOutline,
       arrowBackOutline,
-      checkmarkOutline,
-      closeOutline
+      closeOutline,
+      optionsOutline,
+      checkmarkOutline
     });
   }
 
@@ -274,6 +342,14 @@ export class HeaderComponent implements OnInit {
         if (url.startsWith('/about')) {
           return uiText['nav_about'] || 'About Us';
         }
+        if (url.startsWith('/chapters/')) {
+          const segments = url.split('/');
+          const bookId = segments[2];
+          const book = books.find(b => b.id === bookId);
+          if (book) {
+            return this.dataService.localizeField(book.title, lang);
+          }
+        }
         if (url.startsWith('/reader/')) {
           const segments = url.split('/');
           const bookId = segments[2];
@@ -296,9 +372,9 @@ export class HeaderComponent implements OnInit {
     );
   }
 
-  public openFontPopover(event: Event): void {
-    this.fontPopoverEvent = event;
-    this.isFontPopoverOpen = true;
+  public openSettingsPopover(event: Event): void {
+    this.settingsPopoverEvent = event;
+    this.isSettingsPopoverOpen = true;
   }
 
   public onBackClick(): void {
@@ -312,7 +388,6 @@ export class HeaderComponent implements OnInit {
 
   public async setFontScale(scale: FontSizeScale): Promise<void> {
     await this.storageService.setFontSize(scale);
-    this.isFontPopoverOpen = false;
   }
 
   public trackByLangCode(_index: number, item: SupportedLanguage): string {
