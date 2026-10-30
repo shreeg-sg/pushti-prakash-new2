@@ -92,7 +92,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
                 (click)="openFirstChapter(book)">
                 <img
                   *ngIf="book.coverImageUrl"
-                  [src]="book.coverImageUrl"
+                  [src]="dataService.resolveMediaUrl(book.coverImageUrl)"
                   [alt]="localize(book.title)"
                   class="book-cover-img"
                   (error)="onCoverError($event)" />
@@ -213,7 +213,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
 })
 export class DashboardPage implements OnInit {
   private router = inject(Router);
-  private dataService = inject(DataService);
+  public dataService = inject(DataService);
   private storageService = inject(StorageService);
 
   public visibleBooks$: Observable<Book[]> = this.dataService.visibleBooks$;

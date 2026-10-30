@@ -39,7 +39,7 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
         <!-- Client Brand Card & Welcome Message -->
         <ion-card class="onboarding-card">
           <div class="logo-stage" *ngIf="identity.logoUrl">
-            <img [src]="identity.logoUrl" alt="App Logo" class="welcome-logo" />
+            <img [src]="dataService.resolveMediaUrl(identity.logoUrl)" alt="App Logo" class="welcome-logo" />
           </div>
 
           <ion-card-header class="ion-text-center">
@@ -165,7 +165,7 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
 })
 export class OnboardingPage implements OnInit {
   private router = inject(Router);
-  private dataService = inject(DataService);
+  public dataService = inject(DataService);
   private storageService = inject(StorageService);
 
   public identity$: Observable<AppIdentity> = this.dataService.identity$;

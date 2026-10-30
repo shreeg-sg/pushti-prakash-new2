@@ -51,7 +51,7 @@ import { AppIdentity, Book, Chapter } from '../core/models/app-config.model';
         <div class="brand-container" *ngIf="identity$ | async as identity">
           <img
             *ngIf="identity.logoUrl"
-            [src]="identity.logoUrl"
+            [src]="dataService.resolveMediaUrl(identity.logoUrl)"
             alt="App Logo"
             class="brand-logo" />
           <div class="brand-title">
@@ -207,7 +207,7 @@ import { AppIdentity, Book, Chapter } from '../core/models/app-config.model';
 export class SidebarComponent implements OnInit {
   private router = inject(Router);
   private menuCtrl = inject(MenuController);
-  private dataService = inject(DataService);
+  public dataService = inject(DataService);
   private storageService = inject(StorageService);
 
   public identity$: Observable<AppIdentity> = this.dataService.identity$;

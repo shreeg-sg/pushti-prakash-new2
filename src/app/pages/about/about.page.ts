@@ -131,7 +131,7 @@ export class AboutPage {
     this.storageService.selectedLanguage$
   ]).pipe(
     map(([cfg, uiText, lang]) => ({
-      logoUrl: cfg.app_identity.logoUrl,
+      logoUrl: this.dataService.resolveMediaUrl(cfg.app_identity.logoUrl),
       appName:
         this.dataService.localizeField(cfg.app_identity.appName, lang) ||
         cfg.app_identity.defaultAppName,

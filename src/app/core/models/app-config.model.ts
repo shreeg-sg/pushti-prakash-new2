@@ -21,6 +21,7 @@ export interface AppIdentity {
   defaultAppName: string;
   logoUrl: string;
   watermarkUrl: string;
+  mediaBaseUrl?: string; // Optional CDN or GitHub Pages root, e.g. "https://cdn.jsdelivr.net/gh/shreeg-sg/pushtiprakash-media@main"
   theme: ThemeColors;
 }
 

@@ -362,12 +362,15 @@ export class ReaderPage implements OnInit, OnDestroy {
         this.prevChapterId = idx > 0 ? chapters[idx - 1].id : undefined;
         this.nextChapterId = idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1].id : undefined;
 
-        const audioUrl = this.dataService.localizeField(resolved.chapter.audioUrl, lang);
+        // Resolve Audio URL: Handles relative paths (GitHub CDN) and absolute URLs (Firebase Storage)
+        const rawAudioUrl = this.dataService.localizeField(resolved.chapter.audioUrl, lang);
+        const resolvedAudioUrl = this.dataService.resolveMediaUrl(rawAudioUrl);
+
         await this.ttsService.loadChapterMedia({
           chapterId: resolved.chapter.id,
           langCode: lang,
           ttsLocale,
-          audioUrl,
+          audioUrl: resolvedAudioUrl,
           transcript: rawTranscript
         });
       });

@@ -153,6 +153,27 @@ export class DataService implements OnDestroy {
   }
 
   /**
+   * Universal Media URL Resolver:
+   * Supports both Firebase Cloud Storage (full https:// URLs) and GitHub repositories (relative paths).
+   * - If url starts with http://, https://, or data: -> uses as-is (Firebase Storage)
+   * - If url is relative -> prefixes with app_identity.mediaBaseUrl (GitHub / CDN)
+   */
+  public resolveMediaUrl(urlOrPath: string | undefined): string {
+    if (!urlOrPath) return '';
+    const clean = urlOrPath.trim();
+    if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('data:')) {
+      return clean;
+    }
+
+    const baseUrl = this.configSubject.value?.app_identity?.mediaBaseUrl;
+    if (!baseUrl) return clean;
+
+    const sanitizedBase = baseUrl.replace(/\/+$/, '');
+    const sanitizedPath = clean.replace(/^\/+/, '');
+    return `${sanitizedBase}/${sanitizedPath}`;
+  }
+
+  /**
    * Helper to localize any LocalizedStringMap object (Book title, Chapter transcript, etc.)
    * with automatic fallback to English ('en') or Hindi ('hi').
    */
@@ -181,8 +202,13 @@ export class DataService implements OnDestroy {
   }
 
   private applyAndPublishConfig(config: AppConfigPayload, showUpdateBanner: boolean): void {
-    // 1. Dynamically inject CSS variables for theme & watermark
-    this.themeService.applyAppIdentityTheme(config.app_identity);
+    // 1. Dynamically inject CSS variables for theme & watermark (resolving media URLs)
+    const resolvedIdentity: AppIdentity = {
+      ...config.app_identity,
+      logoUrl: this.resolveMediaUrl(config.app_identity.logoUrl),
+      watermarkUrl: this.resolveMediaUrl(config.app_identity.watermarkUrl)
+    };
+    this.themeService.applyAppIdentityTheme(resolvedIdentity);
 
     // 2. Validate that the user's currently selected language is still enabled remotely
     const currentLang = this.storageService.getCurrentLanguageSnapshot();
