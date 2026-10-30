@@ -8,6 +8,8 @@ import {
   IonRange,
   IonBadge,
   IonSpinner,
+  IonSelect,
+  IonSelectOption,
   ToastController
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
@@ -16,7 +18,6 @@ import {
   starOutline,
   play,
   pause,
-  stop,
   volumeHighOutline,
   micOutline,
   playSkipBackOutline,
@@ -43,11 +44,12 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     IonIcon,
     IonRange,
     IonBadge,
-    IonSpinner
+    IonSpinner,
+    IonSelect,
+    IonSelectOption
   ],
   template: `
     <app-header [pageTitle]="activeChapterTitle">
-      <!-- Top-Right Bookmark (⭐) Icon Projected into Global Header -->
       <ion-button
         headerEndActions
         (click)="onToggleBookmark()"
@@ -61,12 +63,13 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     </app-header>
 
     <ion-content class="ion-padding reader-transcript-container">
+      <!-- Watermark Overlay (Unblocked by Shadow DOM, visible 12% opacity behind transcript) -->
+      <div class="watermark-overlay" aria-hidden="true"></div>
+
       <div class="reader-body" *ngIf="activeBook && activeChapter">
-        <!-- Book & Chapter Heading -->
         <div class="book-breadcrumb">{{ localize(activeBook.title) }}</div>
         <h1 class="chapter-heading">{{ localize(activeChapter.title) }}</h1>
 
-        <!-- Chapter Transcript (Scales dynamically with Global Font Size) -->
         <div class="transcript-content">
           <p
             *ngFor="let paragraph of transcriptParagraphs"
@@ -76,8 +79,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
           </p>
         </div>
 
-        <!-- Intra-Book Previous / Next Chapter Navigation -->
-        <div class="chapter-Step-nav">
+        <div class="chapter-step-nav">
           <ion-button
             fill="outline"
             size="small"
@@ -99,9 +101,8 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       </div>
     </ion-content>
 
-    <!-- Floating Bottom Docked Audio / TTS Player -->
+    <!-- Floating Audio/TTS Player (Play/Pause ONLY; Speed Selector Popover List) -->
     <div class="floating-audio-dock" *ngIf="playerState$ | async as state">
-      <!-- Top Row: Mode Indicator Badge & Time / Chunk Counter -->
       <div class="player-meta-row">
         <ion-badge [color]="state.mode === 'audio' ? 'secondary' : 'tertiary'" class="mode-badge">
           <ion-icon [name]="state.mode === 'audio' ? 'volume-high-outline' : 'mic-outline'"></ion-icon>
@@ -122,7 +123,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
         </span>
       </div>
 
-      <!-- Middle Row: Scrubbing Range Slider -->
       <ion-range
         class="player-scrub-bar"
         [min]="0"
@@ -131,17 +131,27 @@ import { Book, Chapter } from '../../core/models/app-config.model';
         (ionChange)="onSeek($event)">
       </ion-range>
 
-      <!-- Bottom Row: Playback Controls (Play/Pause, Stop, Speed Selector) -->
       <div class="player-controls-row">
-        <ion-button
-          fill="clear"
-          size="small"
-          class="speed-btn"
-          (click)="cyclePlaybackSpeed(state.playbackRate)">
-          <ion-icon slot="start" name="speedometer-outline"></ion-icon>
-          {{ state.playbackRate }}x
-        </ion-button>
+        <!-- Speed Picker with Popover List -->
+        <div class="speed-picker-wrapper">
+          <ion-icon name="speedometer-outline" class="speed-icon"></ion-icon>
+          <ion-select
+            interface="popover"
+            [value]="state.playbackRate"
+            (ionChange)="onSpeedSelected($event.detail.value)"
+            class="speed-select-popover"
+            aria-label="Playback Speed">
+            <ion-select-option [value]="0.75">0.75x</ion-select-option>
+            <ion-select-option [value]="0.85">0.85x</ion-select-option>
+            <ion-select-option [value]="1.0">1.0x (Normal)</ion-select-option>
+            <ion-select-option [value]="1.25">1.25x</ion-select-option>
+            <ion-select-option [value]="1.5">1.5x</ion-select-option>
+            <ion-select-option [value]="1.75">1.75x</ion-select-option>
+            <ion-select-option [value]="2.0">2.0x</ion-select-option>
+          </ion-select>
+        </div>
 
+        <!-- Centered Transport: Play / Pause ONLY -->
         <div class="primary-transport">
           <ion-button
             shape="round"
@@ -156,25 +166,35 @@ import { Book, Chapter } from '../../core/models/app-config.model';
               [name]="state.isPlaying ? 'pause' : 'play'">
             </ion-icon>
           </ion-button>
-
-          <ion-button
-            fill="clear"
-            color="medium"
-            [disabled]="!state.isPlaying && state.currentTime === 0"
-            (click)="ttsService.stop()">
-            <ion-icon slot="icon-only" name="stop"></ion-icon>
-          </ion-button>
         </div>
 
-        <div class="spacer-right"></div>
+        <div class="transport-spacer-right"></div>
       </div>
     </div>
   `,
   styles: [`
+    .reader-transcript-container {
+      position: relative;
+    }
+    .watermark-overlay {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 280px;
+      height: 280px;
+      background-image: var(--app-watermark-image);
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: contain;
+      opacity: 0.12; /* Clearly visible logo watermark */
+      pointer-events: none;
+      z-index: 0;
+    }
     .reader-body {
       max-width: 780px;
       margin: 0 auto;
-      padding-bottom: 155px; /* Clearance for floating audio player */
+      padding-bottom: 155px;
       position: relative;
       z-index: 1;
     }
@@ -208,7 +228,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       background-color: rgba(var(--ion-color-secondary-rgb), 0.25);
       border-left: 3px solid var(--ion-color-primary);
     }
-    .chapter-Step-nav {
+    .chapter-step-nav {
       display: flex;
       justify-content: space-between;
       margin-top: 28px;
@@ -219,7 +239,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       position: fixed;
       left: 12px;
       right: 12px;
-      bottom: 42px; /* Above global footer */
+      bottom: 42px;
       max-width: 680px;
       margin: 0 auto;
       background: var(--ion-card-background, #fff8ec);
@@ -259,22 +279,38 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       align-items: center;
       justify-content: space-between;
     }
+    .speed-picker-wrapper {
+      display: flex;
+      align-items: center;
+      background: rgba(var(--ion-color-primary-rgb), 0.08);
+      border-radius: 14px;
+      padding: 2px 8px;
+    }
+    .speed-icon {
+      font-size: 1rem;
+      color: var(--ion-color-primary);
+      margin-right: 2px;
+    }
+    .speed-select-popover {
+      --padding-start: 2px;
+      --padding-end: 2px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--ion-color-primary);
+      min-height: 32px;
+    }
     .primary-transport {
       display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: center;
     }
     .play-pause-btn {
-      width: 46px;
-      height: 46px;
+      width: 48px;
+      height: 48px;
       --border-radius: 50%;
     }
-    .speed-btn {
-      font-weight: 700;
-      font-size: 0.8rem;
-    }
-    .spacer-right {
-      width: 64px;
+    .transport-spacer-right {
+      width: 76px;
     }
   `]
 })
@@ -282,7 +318,7 @@ export class ReaderPage implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private toastCtrl = inject(ToastController);
-  private dataService = inject(DataService);
+  public dataService = inject(DataService);
   private storageService = inject(StorageService);
   public ttsService = inject(TtsService);
 
@@ -302,15 +338,12 @@ export class ReaderPage implements OnInit, OnDestroy {
   private chapterId = '';
   private routeMediaSub?: Subscription;
 
-  private readonly SPEED_STEPS = [0.85, 1.0, 1.25, 1.5];
-
   constructor() {
     addIcons({
       star,
       starOutline,
       play,
       pause,
-      stop,
       volumeHighOutline,
       micOutline,
       playSkipBackOutline,
@@ -352,17 +385,15 @@ export class ReaderPage implements OnInit, OnDestroy {
 
         const rawTranscript = this.dataService.localizeField(resolved.chapter.transcript, lang);
         this.transcriptParagraphs = rawTranscript
-          .split(/\n\s*\n|\n/g)
+          .split(/\\n\\s*\\n|\\n/g)
           .map(p => p.trim())
           .filter(p => p.length > 0);
 
-        // Compute Prev / Next chapter IDs
         const chapters = resolved.book.chapters;
         const idx = chapters.findIndex(c => c.id === resolved.chapter.id);
         this.prevChapterId = idx > 0 ? chapters[idx - 1].id : undefined;
         this.nextChapterId = idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1].id : undefined;
 
-        // Resolve Audio URL: Handles relative paths (GitHub CDN) and absolute URLs (Firebase Storage)
         const rawAudioUrl = this.dataService.localizeField(resolved.chapter.audioUrl, lang);
         const resolvedAudioUrl = this.dataService.resolveMediaUrl(rawAudioUrl);
 
@@ -405,9 +436,10 @@ export class ReaderPage implements OnInit, OnDestroy {
     }
   }
 
-  public cyclePlaybackSpeed(currentRate: number): void {
-    const nextIdx = (this.SPEED_STEPS.indexOf(currentRate) + 1) % this.SPEED_STEPS.length;
-    this.ttsService.setPlaybackRate(this.SPEED_STEPS[nextIdx]);
+  public onSpeedSelected(rate: number): void {
+    if (rate) {
+      this.ttsService.setPlaybackRate(Number(rate));
+    }
   }
 
   public isChunkHighlighted(paragraph: string, state: PlayerState | null): boolean {

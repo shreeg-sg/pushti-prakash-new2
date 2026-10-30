@@ -22,12 +22,13 @@ export class ThemeService {
 
   /**
    * Dynamically applies the remote JSON theme and watermark to the DOM :root element.
+   * If watermarkUrl is missing or empty, automatically falls back to logoUrl.
    */
   public applyAppIdentityTheme(identity: AppIdentity): void {
     if (!identity?.theme) return;
 
     const root = this.document.documentElement;
-    const { theme, watermarkUrl } = identity;
+    const { theme, watermarkUrl, logoUrl } = identity;
 
     // 1. Apply core Ionic color palettes (--ion-color-primary, --ion-color-secondary, --ion-color-tertiary)
     this.setIonicColorVariable(root, 'primary', theme.primary);
@@ -54,9 +55,13 @@ export class ThemeService {
       root.style.setProperty('--ion-text-color-rgb', this.hexToRgbString(theme.textPrimary));
     }
 
-    // 3. Apply custom watermark CSS variable for reader/dashboard backgrounds
-    if (watermarkUrl) {
-      root.style.setProperty('--app-watermark-image', `url("${watermarkUrl}")`);
+    // 3. Apply custom watermark CSS variable (fall back to logoUrl if watermarkUrl is not provided)
+    const effectiveWatermark = (watermarkUrl && watermarkUrl.trim().length > 0)
+      ? watermarkUrl.trim()
+      : (logoUrl && logoUrl.trim().length > 0 ? logoUrl.trim() : null);
+
+    if (effectiveWatermark) {
+      root.style.setProperty('--app-watermark-image', `url("${effectiveWatermark}")`);
     } else {
       root.style.setProperty('--app-watermark-image', 'none');
     }

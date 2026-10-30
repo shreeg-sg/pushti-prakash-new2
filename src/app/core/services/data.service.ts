@@ -42,7 +42,16 @@ export class DataService implements OnDestroy {
     filter((cfg): cfg is AppConfigPayload => cfg !== null)
   );
   public readonly isSyncing$: Observable<boolean> = this.isSyncingSubject.asObservable();
-  public readonly updateBanner$: Observable<string | null> = this.updateBannerSubject.asObservable();
+  // Reactive update banner (reacts to language change instantly):
+  public readonly updateBanner$: Observable<string | null> = combineLatest([
+    this.config$,
+    this.storageService.selectedLanguage$
+  ]).pipe(
+    map(([cfg, lang]) => {
+      if (!cfg?.updateBannerMessage) return null;
+      return this.localizeField(cfg.updateBannerMessage, lang) || null;
+    })
+  );
 
   // Derived Reactive Streams
   public readonly identity$: Observable<AppIdentity> = this.config$.pipe(
@@ -78,7 +87,7 @@ export class DataService implements OnDestroy {
     map(([cfg, langCode]) => this.resolveUiTranslations(cfg.ui_translations, langCode))
   );
 
-  constructor() {}
+  constructor() { }
 
   /**
    * Call once inside AppComponent.ngOnInit().
@@ -153,14 +162,22 @@ export class DataService implements OnDestroy {
   }
 
   /**
-   * Universal Media URL Resolver:
-   * Supports both Firebase Cloud Storage (full https:// URLs) and GitHub repositories (relative paths).
-   * - If url starts with http://, https://, or data: -> uses as-is (Firebase Storage)
-   * - If url is relative -> prefixes with app_identity.mediaBaseUrl (GitHub / CDN)
-   */
+     * Universal Media URL Resolver:
+     * Handles relative paths (GitHub CDN) and absolute URLs (Firebase Storage).
+     * Also converts raw GitHub web blob URLs automatically.
+     */
   public resolveMediaUrl(urlOrPath: string | undefined): string {
     if (!urlOrPath) return '';
-    const clean = urlOrPath.trim();
+    let clean = urlOrPath.trim();
+
+    // Auto-convert browser GitHub blob URLs to jsDelivr CDN
+    if (clean.includes('github.com/') && clean.includes('/blob/')) {
+      clean = clean
+        .replace(/^https?:\/\/github\.com\//, 'https://cdn.jsdelivr.net/gh/')
+        .replace('/blob/', '@');
+      return clean;
+    }
+
     if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('data:')) {
       return clean;
     }
@@ -206,7 +223,7 @@ export class DataService implements OnDestroy {
     const resolvedIdentity: AppIdentity = {
       ...config.app_identity,
       logoUrl: this.resolveMediaUrl(config.app_identity.logoUrl),
-      watermarkUrl: this.resolveMediaUrl(config.app_identity.watermarkUrl)
+      watermarkUrl: this.resolveMediaUrl(config.app_identity.logoUrl)
     };
     this.themeService.applyAppIdentityTheme(resolvedIdentity);
 

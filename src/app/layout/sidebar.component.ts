@@ -62,7 +62,6 @@ import { AppIdentity, Book, Chapter } from '../core/models/app-config.model';
     </ion-header>
 
     <ion-content class="sidebar-content">
-      <!-- Primary Navigation Links -->
       <ion-list lines="none" class="nav-section">
         <ion-item
           button
@@ -92,7 +91,7 @@ import { AppIdentity, Book, Chapter } from '../core/models/app-config.model';
         </ion-item>
       </ion-list>
 
-      <!-- Dynamic Book & Chapter Tree (Accordion) -->
+      <!-- Accordion: Collapsed by default unless a book is open in the reader -->
       <ion-list lines="none" class="book-tree-section" *ngIf="(visibleBooks$ | async) as books">
         <ion-list-header>
           <ion-label class="tree-section-header">
@@ -105,7 +104,6 @@ import { AppIdentity, Book, Chapter } from '../core/models/app-config.model';
             *ngFor="let book of books; trackBy: trackByBookId"
             [value]="book.id"
             class="book-accordion">
-            <!-- Book Header Row -->
             <ion-item
               slot="header"
               [class.active-book-header]="(activeBookId$ | async) === book.id">
@@ -115,7 +113,6 @@ import { AppIdentity, Book, Chapter } from '../core/models/app-config.model';
               </ion-label>
             </ion-item>
 
-            <!-- Nested Chapters List -->
             <div class="ion-padding-start chapter-list" slot="content">
               <ion-item
                 *ngFor="let chapter of book.chapters; trackBy: trackByChapterId"
@@ -240,14 +237,14 @@ export class SidebarComponent implements OnInit {
       startWith(this.router.url.split('?')[0])
     );
 
-    // Automatically expand the book accordion matching the active `/reader/:bookId/:chapterId` route
+    // Collapsed by default unless viewing a chapter in the reader
     this.activeBookId$ = combineLatest([this.activePath$, this.visibleBooks$]).pipe(
-      map(([path, books]) => {
+      map(([path, _books]) => {
         if (path.startsWith('/reader/')) {
           const segments = path.split('/');
           return segments[2];
         }
-        return books[0]?.id;
+        return undefined; // All books stay collapsed by default
       })
     );
   }

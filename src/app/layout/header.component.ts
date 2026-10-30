@@ -11,7 +11,10 @@ import {
   IonTitle,
   IonSelect,
   IonSelectOption,
-  ActionSheetController,
+  IonPopover,
+  IonList,
+  IonItem,
+  IonLabel,
   NavController
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
@@ -24,7 +27,6 @@ import {
 } from 'ionicons/icons';
 import { Observable, combineLatest } from 'rxjs';
 import { filter, map, startWith } from 'rxjs/operators';
-import { firstValueFrom } from 'rxjs';
 
 import { DataService } from '../core/services/data.service';
 import { StorageService } from '../core/services/storage.service';
@@ -43,12 +45,15 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
     IonIcon,
     IonTitle,
     IonSelect,
-    IonSelectOption
+    IonSelectOption,
+    IonPopover,
+    IonList,
+    IonItem,
+    IonLabel
   ],
   template: `
     <ion-header class="ion-no-border">
       <ion-toolbar color="primary">
-        <!-- Left Controls: Menu Toggle + In-Screen Back Button on Sub-Pages -->
         <ion-buttons slot="start">
           <ion-menu-button autoHide="false"></ion-menu-button>
           <ion-button
@@ -59,23 +64,67 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
           </ion-button>
         </ion-buttons>
 
-        <!-- Center Dynamic Title (from @Input or resolved from JSON by route) -->
         <ion-title class="header-dynamic-title">
           {{ pageTitle || (resolvedRouteTitle$ | async) }}
         </ion-title>
 
-        <!-- Right Controls: Custom Page Actions (e.g., Reader Bookmark ⭐) + Font Size + Language -->
         <ion-buttons slot="end">
           <ng-content select="[headerEndActions]"></ng-content>
 
-          <!-- Font Size ActionSheet Trigger -->
+          <!-- Font Size Popover Trigger (Works across ALL pages using event-driven [isOpen]) -->
           <ion-button
-            (click)="openFontSizeActionSheet()"
+            (click)="openFontPopover($event)"
             [attr.aria-label]="(uiText$ | async)?.['font_size_title'] || 'Font Size'">
             <ion-icon slot="icon-only" name="text-outline"></ion-icon>
           </ion-button>
 
-          <!-- Instant Language Switcher -->
+          <!-- Font Size Popover: 1st row has Title & Close/Cancel button -->
+          <ion-popover
+            [isOpen]="isFontPopoverOpen"
+            [event]="fontPopoverEvent"
+            (didDismiss)="isFontPopoverOpen = false"
+            class="font-size-popover">
+            <ng-template>
+              <div class="popover-first-row">
+                <span class="popover-heading">{{ (uiText$ | async)?.['font_size_title'] || 'Font Size' }}</span>
+                <button
+                  type="button"
+                  class="popover-close-btn"
+                  aria-label="Close"
+                  (click)="isFontPopoverOpen = false">
+                  <ion-icon name="close-outline"></ion-icon>
+                </button>
+              </div>
+              <ion-list lines="full" class="font-options-list">
+                <ion-item
+                  button
+                  detail="false"
+                  [class.active-font-item]="(selectedFontSize$ | async) === 'small'"
+                  (click)="setFontScale('small')">
+                  <ion-label>{{ (uiText$ | async)?.['font_small'] || 'Small' }}</ion-label>
+                  <ion-icon slot="end" name="checkmark-outline" *ngIf="(selectedFontSize$ | async) === 'small'"></ion-icon>
+                </ion-item>
+                <ion-item
+                  button
+                  detail="false"
+                  [class.active-font-item]="(selectedFontSize$ | async) === 'medium'"
+                  (click)="setFontScale('medium')">
+                  <ion-label>{{ (uiText$ | async)?.['font_medium'] || 'Medium' }}</ion-label>
+                  <ion-icon slot="end" name="checkmark-outline" *ngIf="(selectedFontSize$ | async) === 'medium'"></ion-icon>
+                </ion-item>
+                <ion-item
+                  button
+                  detail="false"
+                  [class.active-font-item]="(selectedFontSize$ | async) === 'large'"
+                  (click)="setFontScale('large')">
+                  <ion-label>{{ (uiText$ | async)?.['font_large'] || 'Large' }}</ion-label>
+                  <ion-icon slot="end" name="checkmark-outline" *ngIf="(selectedFontSize$ | async) === 'large'"></ion-icon>
+                </ion-item>
+              </ion-list>
+            </ng-template>
+          </ion-popover>
+
+          <!-- Language Dropdown -->
           <div class="lang-select-wrapper" *ngIf="(enabledLanguages$ | async) as languages">
             <ion-icon name="language-outline" class="lang-icon"></ion-icon>
             <ion-select
@@ -83,7 +132,8 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
               interface="popover"
               [value]="selectedLanguage$ | async"
               (ionChange)="onLanguageChange($event.detail.value)"
-              class="header-lang-select">
+              class="header-lang-select"
+              aria-label="Select Language">
               <ion-select-option
                 *ngFor="let lang of languages; trackBy: trackByLangCode"
                 [value]="lang.code">
@@ -125,29 +175,59 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
       color: var(--ion-toolbar-color, #ffffff);
       min-height: 30px;
     }
+    .popover-first-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      background: var(--ion-color-light, #f4f5f8);
+    }
+    .popover-heading {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--ion-text-color, #2c1810);
+    }
+    .popover-close-btn {
+      background: transparent;
+      border: none;
+      padding: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      color: var(--ion-color-medium, #666666);
+      border-radius: 50%;
+
+      &:hover, &:active {
+        background: rgba(0, 0, 0, 0.08);
+      }
+    }
+    .font-options-list {
+      padding: 4px 0;
+    }
+    .active-font-item {
+      --color: var(--ion-color-primary);
+      font-weight: 600;
+    }
   `]
 })
 export class HeaderComponent implements OnInit {
   private router = inject(Router);
   private navCtrl = inject(NavController);
-  private actionSheetCtrl = inject(ActionSheetController);
-  private dataService = inject(DataService);
-  private storageService = inject(StorageService);
+  public dataService = inject(DataService);
+  public storageService = inject(StorageService);
 
-  /**
-   * Optional explicit title override (e.g., Chapter Title passed directly by ReaderComponent).
-   * If omitted, HeaderComponent resolves the title automatically from the active route & JSON.
-   */
   @Input() pageTitle?: string;
-
-  /**
-   * Optional explicit back-button toggle. Defaults to showing the in-screen back button
-   * on any route other than `/dashboard`.
-   */
   @Input() showBackButton?: boolean;
+
+  public isFontPopoverOpen = false;
+  public fontPopoverEvent: any = null;
 
   public enabledLanguages$: Observable<SupportedLanguage[]> = this.dataService.enabledLanguages$;
   public selectedLanguage$: Observable<string> = this.storageService.selectedLanguage$;
+  public selectedFontSize$: Observable<FontSizeScale> = this.storageService.selectedFontSize$;
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
 
   public currentUrl$!: Observable<string>;
@@ -216,6 +296,11 @@ export class HeaderComponent implements OnInit {
     );
   }
 
+  public openFontPopover(event: Event): void {
+    this.fontPopoverEvent = event;
+    this.isFontPopoverOpen = true;
+  }
+
   public onBackClick(): void {
     this.navCtrl.back();
   }
@@ -225,34 +310,9 @@ export class HeaderComponent implements OnInit {
     await this.storageService.setLanguage(newLangCode);
   }
 
-  public async openFontSizeActionSheet(): Promise<void> {
-    const uiText = await firstValueFrom(this.dataService.uiText$);
-    const currentScale: FontSizeScale = this.storageService.getCurrentFontSizeSnapshot();
-
-    const buildOption = (scale: FontSizeScale, fallbackLabel: string, uiKey: string) => ({
-      text: uiText[uiKey] || fallbackLabel,
-      icon: currentScale === scale ? 'checkmark-outline' : undefined,
-      cssClass: currentScale === scale ? 'active-font-scale-option' : '',
-      handler: () => {
-        this.storageService.setFontSize(scale);
-      }
-    });
-
-    const actionSheet = await this.actionSheetCtrl.create({
-      header: uiText['font_size_title'] || 'Select Font Size',
-      buttons: [
-        buildOption('small', 'Small', 'font_small'),
-        buildOption('medium', 'Medium', 'font_medium'),
-        buildOption('large', 'Large', 'font_large'),
-        {
-          text: uiText['cancel'] || 'Cancel',
-          icon: 'close-outline',
-          role: 'cancel'
-        }
-      ]
-    });
-
-    await actionSheet.present();
+  public async setFontScale(scale: FontSizeScale): Promise<void> {
+    await this.storageService.setFontSize(scale);
+    this.isFontPopoverOpen = false;
   }
 
   public trackByLangCode(_index: number, item: SupportedLanguage): string {
