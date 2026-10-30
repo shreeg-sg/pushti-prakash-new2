@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../../../../node_modules/@capacitor-community/text-to-speech/dist/esm/definitions.js", "../../../../../../node_modules/@capacitor-community/text-to-speech/dist/esm/index.js"],
+  "sourcesContent": ["export var QueueStrategy;\n(function (QueueStrategy) {\n  /**\n   * Use `Flush` to stop the current request when a new request is sent.\n   */\n  QueueStrategy[QueueStrategy[\"Flush\"] = 0] = \"Flush\";\n  /**\n   * Use `Add` to buffer the speech request. The request will be executed when all previous requests have been completed.\n   */\n  QueueStrategy[QueueStrategy[\"Add\"] = 1] = \"Add\";\n})(QueueStrategy || (QueueStrategy = {}));\n", "import { registerPlugin } from '@capacitor/core';\nconst TextToSpeech = registerPlugin('TextToSpeech', {\n  web: () => import('./web').then(m => new m.TextToSpeechWeb())\n});\n// Warm up\nif ('speechSynthesis' in window) {\n  window.speechSynthesis;\n}\nexport * from './definitions';\nexport { TextToSpeech };\n"],
+  "mappings": ";;;;;;AAAO,IAAI;AAAA,CACV,SAAUA,gBAAe;AAIxB,EAAAA,eAAcA,eAAc,OAAO,IAAI,CAAC,IAAI;AAI5C,EAAAA,eAAcA,eAAc,KAAK,IAAI,CAAC,IAAI;AAC5C,GAAG,kBAAkB,gBAAgB,CAAC,EAAE;;;ACTxC,IAAM,eAAe,eAAe,gBAAgB;AAAA,EAClD,KAAK,MAAM,OAAO,mBAAO,EAAE,KAAK,OAAK,IAAI,EAAE,gBAAgB,CAAC;AAC9D,CAAC;AAED,IAAI,qBAAqB,QAAQ;AAC/B,SAAO;AACT;",
+  "names": ["QueueStrategy"]
+}

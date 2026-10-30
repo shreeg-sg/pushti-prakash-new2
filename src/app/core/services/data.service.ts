@@ -1,11 +1,10 @@
 import { Injectable, NgZone, OnDestroy, inject } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, Observable, combineLatest, firstValueFrom } from 'rxjs';
 import { map, filter } from 'rxjs/operators';
 import { App, AppState } from '@capacitor/app';
-import { Network } from '@capacitor/network';
 import { Preferences } from '@capacitor/preferences';
-import { PluginListenerHandle, Capacitor } from '@capacitor/core';
+import { PluginListenerHandle } from '@capacitor/core';
 
 import { environment } from '../../../environments/environment';
 import {
@@ -19,6 +18,13 @@ import {
 import { ThemeService } from './theme.service';
 import { StorageService } from './storage.service';
 import { NotificationService } from './notification.service';
+
+export interface SyncResult {
+  success: boolean;
+  message: string;
+  statusCode?: number;
+  data?: AppConfigPayload;
+}
 
 @Injectable({
   providedIn: 'root'
@@ -95,89 +101,111 @@ export class DataService implements OnDestroy {
       this.applyAndPublishConfig(cachedConfig);
     }
 
-    await this.syncWithRemote();
+    await this.syncWithRemote(true);
 
-    this.appStateListener = await App.addListener('appStateChange', (state: AppState) => {
+    this.appStateListener = await App.addListener('appStateChange', async (state: AppState) => {
       if (state.isActive) {
-        this.ngZone.run(() => {
-          this.syncWithRemote();
+        this.ngZone.run(async () => {
+          console.log('[DataService] App resumed. Refreshing data from repo...');
+          await this.syncWithRemote(true);
         });
       }
     });
   }
 
   /**
-   * Hot-Update Synchronizer with Cache-Busting:
-   * Uses navigator.onLine for web compatibility, cache-busting timestamp (?t=...),
-   * and Cache-Control headers to defeat Fastly/GitHub edge caching.
+   * Universal Hot-Update Synchronizer (CORS-Safe Simple Request):
+   * No custom headers are sent so raw.githubusercontent.com never triggers an OPTIONS preflight.
    */
-  public async syncWithRemote(): Promise<boolean> {
+  public async syncWithRemote(hardClearCache = false): Promise<SyncResult> {
     this.isSyncingSubject.next(true);
+
+    const endpoint = environment.firebaseConfigUrl?.trim();
+    if (!endpoint) {
+      this.isSyncingSubject.next(false);
+      return { success: false, message: 'No remote URL configured in environment.firebaseConfigUrl' };
+    }
+
+    const separator = endpoint.includes('?') ? '&' : '?';
+    const requestUrl = `${endpoint}${separator}_cb=${Date.now()}`;
+
+    console.log('[DataService] Fetching from repo:', requestUrl);
+
     try {
-      const status = await Network.getStatus();
-      const isOnline = Capacitor.isNativePlatform() ? status.connected : navigator.onLine;
-
-      if (!isOnline) {
-        console.log('[DataService] Device is offline. Using local cached configuration.');
-        await this.ensureFallbackLoaded();
-        return false;
-      }
-
-      const endpoint = environment.firebaseConfigUrl;
-      const separator = endpoint.includes('?') ? '&' : '?';
-      const url = `${endpoint}${separator}t=${Date.now()}`;
-      const headers = new HttpHeaders({
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      });
-
-      console.log('[DataService] Fetching remote config from:', url);
-
+      // Simple GET request: No custom headers -> No OPTIONS preflight -> No CORS blocking
       const remoteConfig = await firstValueFrom(
-        this.http.get<AppConfigPayload>(url, { headers })
+        this.http.get<AppConfigPayload>(requestUrl)
       );
 
-      if (remoteConfig && remoteConfig.app_identity) {
-        console.log('[DataService] Successfully received remote config. Updating UI & local storage.');
+      if (remoteConfig && remoteConfig.app_identity && Array.isArray(remoteConfig.books)) {
+        console.log('[DataService] Fresh data received from repo successfully! Schema version:', remoteConfig.schemaVersion);
+
+        if (hardClearCache) {
+          await Preferences.remove({ key: this.CACHE_KEY });
+        }
+
         await Preferences.set({
           key: this.CACHE_KEY,
           value: JSON.stringify(remoteConfig)
         });
 
-        this.applyAndPublishConfig(remoteConfig);
-        return true;
+        this.ngZone.run(() => {
+          this.applyAndPublishConfig(remoteConfig);
+        });
+
+        this.isSyncingSubject.next(false);
+        return {
+          success: true,
+          message: 'Updated to latest configuration from GitHub',
+          statusCode: 200,
+          data: remoteConfig
+        };
       }
 
-      await this.ensureFallbackLoaded();
-      return false;
+      throw new Error('Received JSON is missing app_identity or books array.');
     } catch (error: any) {
-      console.error('[DataService] Remote fetch failed from ' + environment.firebaseConfigUrl + ':', error);
-      if (error?.status === 404) {
-        console.error('[DataService] HTTP 404: The URL was not found. Please verify the GitHub repo is PUBLIC, the branch is correct (main vs master), and the file path is src/assets/mock/data.json.');
-      } else if (error?.status === 0) {
-        console.error('[DataService] HTTP 0 / CORS: Network blocked or offline.');
-      }
-      await this.ensureFallbackLoaded();
-      return false;
-    } finally {
       this.isSyncingSubject.next(false);
+      const status = error?.status;
+      let userMsg = `Failed to fetch data.json (Status: ${status || 'Network Error'})`;
+
+      if (status === 404) {
+        userMsg = 'HTTP 404: File not found on GitHub. Check if repo is PUBLIC and branch is correct.';
+        console.error('[DataService] HTTP 404: The URL was not found:', requestUrl);
+      } else if (status === 0) {
+        userMsg = 'Network Error / CORS Blocked.';
+        console.error('[DataService] Network Error (Status 0):', error);
+      } else {
+        console.error('[DataService] Remote sync error:', error);
+      }
+
+      if (!this.configSubject.value) {
+        await this.loadAndApplyExistingCache();
+      }
+
+      return { success: false, message: userMsg, statusCode: status };
     }
   }
 
-  public async syncWithFirebase(): Promise<boolean> {
-    return this.syncWithRemote();
+  public async syncWithFirebase(): Promise<SyncResult> {
+    return this.syncWithRemote(true);
   }
 
-  /**
-   * Universal Media URL Resolver:
-   * - Images: uses jsDelivr CDN
-   * - Audio files (.mp3, .wav, .m4a): automatically switches to raw.githubusercontent.com for binary media streaming
-   */
+  public async loadAndApplyExistingCache(): Promise<void> {
+    const cachedConfig = await this.loadCachedConfig();
+    if (cachedConfig) {
+      this.ngZone.run(() => {
+        this.applyAndPublishConfig(cachedConfig);
+      });
+      return;
+    }
+    await this.ensureFallbackLoaded();
+  }
+
   public resolveMediaUrl(urlOrPath: string | undefined): string {
     if (!urlOrPath) return '';
     let clean = urlOrPath.trim();
 
+    // Auto-convert browser GitHub blob URLs to raw.githubusercontent.com
     if (clean.includes('github.com/') && clean.includes('/blob/')) {
       clean = clean
         .replace(/^https?:\/\/github\.com\//, 'https://raw.githubusercontent.com/')
@@ -257,18 +285,14 @@ export class DataService implements OnDestroy {
   private async ensureFallbackLoaded(): Promise<void> {
     if (this.configSubject.value) return;
 
-    const cached = await this.loadCachedConfig();
-    if (cached) {
-      this.applyAndPublishConfig(cached);
-      return;
-    }
-
     try {
       const bundled = await firstValueFrom(
         this.http.get<AppConfigPayload>(environment.fallbackMockPath)
       );
       if (bundled) {
-        this.applyAndPublishConfig(bundled);
+        this.ngZone.run(() => {
+          this.applyAndPublishConfig(bundled);
+        });
       }
     } catch (err) {
       console.error('[DataService] Critical: No cached or bundled config available.', err);

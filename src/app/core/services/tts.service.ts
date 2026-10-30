@@ -39,6 +39,11 @@ export class TtsService implements OnDestroy {
 
   constructor(private ngZone: NgZone) {}
 
+  /**
+   * Initializes playback source for the active chapter and language.
+   * If audioUrl is non-empty, attempts to load recorded MP3.
+   * If audioUrl is empty or fails to load, prepares TTS sentence chunks.
+   */
   public async loadChapterMedia(params: {
     chapterId: string;
     langCode: string;
@@ -176,6 +181,8 @@ export class TtsService implements OnDestroy {
     }
   }
 
+  // --- Internal Audio Logic ---
+
   private async setupRecordedAudio(
     chapterId: string,
     langCode: string,
@@ -260,6 +267,8 @@ export class TtsService implements OnDestroy {
     }
   }
 
+  // --- Internal TTS Engine (Dual Web Speech API + Capacitor Native Engine) ---
+
   private switchToTtsFallback(): void {
     if (this.audioElement) {
       this.audioElement.pause();
@@ -318,8 +327,8 @@ export class TtsService implements OnDestroy {
 
   /**
    * Dual-Engine Speech Synthesizer:
-   * - Browser: Uses window.speechSynthesis (Web Speech API) with unfreeze cancel/resume
-   * - Android / iOS: Uses Capacitor TextToSpeech plugin with language code retry
+   * - Browser / Web: Uses window.speechSynthesis (Web Speech API)
+   * - Android / iOS: Uses Capacitor TextToSpeech plugin with automatic locale fallback
    */
   private speakChunk(text: string, lang: string, rate: number): Promise<void> {
     return new Promise(async (resolve, reject) => {
