@@ -5,6 +5,7 @@ import {
   IonHeader,
   IonToolbar,
   IonContent,
+  IonFooter,
   IonList,
   IonListHeader,
   IonItem,
@@ -28,6 +29,7 @@ import { filter, map, startWith } from 'rxjs/operators';
 import { DataService } from '../core/services/data.service';
 import { StorageService } from '../core/services/storage.service';
 import { AppIdentity, Book, Chapter } from '../core/models/app-config.model';
+import { FooterComponent } from './footer.component';
 
 @Component({
   selector: 'app-sidebar',
@@ -37,13 +39,15 @@ import { AppIdentity, Book, Chapter } from '../core/models/app-config.model';
     IonHeader,
     IonToolbar,
     IonContent,
+    IonFooter,
     IonList,
     IonListHeader,
     IonItem,
     IonIcon,
     IonLabel,
     IonAccordionGroup,
-    IonAccordion
+    IonAccordion,
+    FooterComponent
   ],
   template: `
     <ion-header class="ion-no-border">
@@ -91,7 +95,7 @@ import { AppIdentity, Book, Chapter } from '../core/models/app-config.model';
         </ion-item>
       </ion-list>
 
-      <!-- Accordion: Collapsed by default unless a book is open in the reader -->
+      <!-- Accordion: Collapsed by default unless viewing a chapter -->
       <ion-list lines="none" class="book-tree-section" *ngIf="(visibleBooks$ | async) as books">
         <ion-list-header>
           <ion-label class="tree-section-header">
@@ -132,6 +136,11 @@ import { AppIdentity, Book, Chapter } from '../core/models/app-config.model';
         </ion-accordion-group>
       </ion-list>
     </ion-content>
+
+    <!-- Footer cleanly docked in Sidebar -->
+    <ion-footer class="ion-no-border sidebar-footer">
+      <app-footer></app-footer>
+    </ion-footer>
   `,
   styles: [`
     .sidebar-brand-toolbar {
@@ -199,6 +208,10 @@ import { AppIdentity, Book, Chapter } from '../core/models/app-config.model';
     .active-chapter-item .chapter-icon {
       color: var(--ion-color-primary-contrast, #ffffff);
     }
+    .sidebar-footer {
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
+      background: var(--ion-card-background, #fff8ec);
+    }
   `]
 })
 export class SidebarComponent implements OnInit {
@@ -237,14 +250,13 @@ export class SidebarComponent implements OnInit {
       startWith(this.router.url.split('?')[0])
     );
 
-    // Collapsed by default unless viewing a chapter in the reader
     this.activeBookId$ = combineLatest([this.activePath$, this.visibleBooks$]).pipe(
       map(([path, _books]) => {
         if (path.startsWith('/reader/')) {
           const segments = path.split('/');
           return segments[2];
         }
-        return undefined; // All books stay collapsed by default
+        return undefined;
       })
     );
   }

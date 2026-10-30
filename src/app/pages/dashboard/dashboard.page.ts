@@ -12,26 +12,20 @@ import {
   IonCardHeader,
   IonCardTitle,
   IonCardSubtitle,
-  IonIcon,
-  IonLabel,
-  IonList,
-  IonItem
+  IonIcon
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
   sparklesOutline,
   bookOutline,
-  playCircleOutline,
-  documentTextOutline,
-  chevronDownOutline,
-  chevronUpOutline
+  arrowForwardOutline
 } from 'ionicons/icons';
 import { Observable } from 'rxjs';
 
 import { HeaderComponent } from '../../layout/header.component';
 import { DataService } from '../../core/services/data.service';
 import { StorageService } from '../../core/services/storage.service';
-import { Book, Chapter } from '../../core/models/app-config.model';
+import { Book } from '../../core/models/app-config.model';
 
 @Component({
   selector: 'app-dashboard',
@@ -49,10 +43,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     IonCardHeader,
     IonCardTitle,
     IonCardSubtitle,
-    IonIcon,
-    IonLabel,
-    IonList,
-    IonItem
+    IonIcon
   ],
   template: `
     <app-header [showBackButton]="false"></app-header>
@@ -64,14 +55,19 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     </div>
 
     <ion-content class="ion-padding dashboard-content">
-      <!-- Watermark Overlay (Unblocked by Shadow DOM, visible 12% opacity behind cards) -->
-      <div class="watermark-overlay" aria-hidden="true"></div>
+      <!-- Direct Watermark Binding (15% opacity behind book cards) -->
+      <div
+        class="watermark-overlay"
+        *ngIf="watermarkUrl$ | async as wmUrl"
+        [style.backgroundImage]="'url(' + wmUrl + ')'"
+        aria-hidden="true">
+      </div>
 
       <ion-refresher slot="fixed" (ionRefresh)="onPullRefresh($event)">
         <ion-refresher-content></ion-refresher-content>
       </ion-refresher>
 
-      <!-- Books Grid (Chapters collapsed by default until book clicked) -->
+      <!-- Clean Book Cards (Clicking opens /chapters/:bookId) -->
       <ion-grid fixed class="books-grid">
         <ion-row *ngIf="visibleBooks$ | async as books">
           <ion-col
@@ -79,60 +75,31 @@ import { Book, Chapter } from '../../core/models/app-config.model';
             sizeMd="6"
             sizeLg="4"
             *ngFor="let book of books; trackBy: trackByBookId">
-            <ion-card class="book-card" [class.card-expanded]="expandedBookId === book.id">
-              <div class="book-card-main" (click)="toggleChapters(book.id)">
-                <div class="book-cover-wrapper">
-                  <img
-                    *ngIf="book.coverImageUrl"
-                    [src]="dataService.resolveMediaUrl(book.coverImageUrl)"
-                    [alt]="localize(book.title)"
-                    class="book-cover-img"
-                    (error)="onCoverError($event)" />
-                  <div class="chapter-count-badge">
-                    <ion-icon name="book-outline"></ion-icon>
-                    <span>{{ book.chapters.length }} Chapters</span>
-                  </div>
+            <ion-card class="book-card" (click)="openBookChapters(book.id)">
+              <div class="book-cover-wrapper">
+                <img
+                  *ngIf="book.coverImageUrl"
+                  [src]="dataService.resolveMediaUrl(book.coverImageUrl)"
+                  [alt]="localize(book.title)"
+                  class="book-cover-img"
+                  (error)="onCoverError($event)" />
+                <div class="chapter-count-badge">
+                  <ion-icon name="book-outline"></ion-icon>
+                  <span>{{ book.chapters.length }} Chapters</span>
                 </div>
-
-                <ion-card-header>
-                  <div class="title-row">
-                    <ion-card-title class="book-card-title">
-                      {{ localize(book.title) }}
-                    </ion-card-title>
-                    <ion-icon
-                      [name]="expandedBookId === book.id ? 'chevron-up-outline' : 'chevron-down-outline'"
-                      class="expand-icon">
-                    </ion-icon>
-                  </div>
-                  <ion-card-subtitle *ngIf="book.subtitle" class="book-card-subtitle">
-                    {{ localize(book.subtitle) }}
-                  </ion-card-subtitle>
-                </ion-card-header>
               </div>
 
-              <!-- Collapsible Chapter List -->
-              <div class="chapter-drawer" *ngIf="expandedBookId === book.id">
-                <div class="drawer-header">
-                  <span>{{ (uiText$ | async)?.['nav_books_header'] || 'Select Chapter' }}</span>
+              <ion-card-header>
+                <div class="title-row">
+                  <ion-card-title class="book-card-title">
+                    {{ localize(book.title) }}
+                  </ion-card-title>
+                  <ion-icon name="arrow-forward-outline" class="action-arrow"></ion-icon>
                 </div>
-                <ion-list lines="full" class="drawer-chapter-list">
-                  <ion-item
-                    *ngFor="let ch of book.chapters; trackBy: trackByChapterId"
-                    button
-                    detail="true"
-                    class="chapter-drawer-item"
-                    (click)="openChapter(book.id, ch.id)">
-                    <ion-icon
-                      slot="start"
-                      [name]="hasRecordedAudio(ch) ? 'play-circle-outline' : 'document-text-outline'"
-                      color="primary">
-                    </ion-icon>
-                    <ion-label class="ion-text-wrap">
-                      <h3>{{ localize(ch.title) }}</h3>
-                    </ion-label>
-                  </ion-item>
-                </ion-list>
-              </div>
+                <ion-card-subtitle *ngIf="book.subtitle" class="book-card-subtitle">
+                  {{ localize(book.subtitle) }}
+                </ion-card-subtitle>
+              </ion-card-header>
             </ion-card>
           </ion-col>
         </ion-row>
@@ -174,11 +141,10 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       transform: translate(-50%, -50%);
       width: 280px;
       height: 280px;
-      background-image: var(--app-watermark-image);
       background-repeat: no-repeat;
       background-position: center;
       background-size: contain;
-      opacity: 0.12; /* Clearly visible logo watermark */
+      opacity: 0.15;
       pointer-events: none;
       z-index: 0;
     }
@@ -191,15 +157,14 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       overflow: hidden;
       margin: 8px 0;
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
-      transition: all 0.25s ease-in-out;
+      transition: transform 0.22s ease, box-shadow 0.22s ease;
       background: var(--ion-card-background, #fff8ec);
-    }
-    .book-card.card-expanded {
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
-      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.25);
-    }
-    .book-card-main {
       cursor: pointer;
+
+      &:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+      }
     }
     .book-cover-wrapper {
       position: relative;
@@ -211,10 +176,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       width: 100%;
       height: 100%;
       object-fit: cover;
-      transition: transform 0.25s ease;
-    }
-    .book-card-main:hover .book-cover-img {
-      transform: scale(1.03);
     }
     .chapter-count-badge {
       position: absolute;
@@ -241,45 +202,14 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       font-weight: 700;
       flex: 1;
     }
-    .expand-icon {
-      font-size: 1.3rem;
+    .action-arrow {
+      font-size: 1.2rem;
       color: var(--ion-color-primary);
       flex-shrink: 0;
     }
     .book-card-subtitle {
       margin-top: 4px;
       font-size: 0.86rem;
-    }
-    .chapter-drawer {
-      border-top: 1px solid rgba(0, 0, 0, 0.08);
-      background: rgba(var(--ion-color-primary-rgb), 0.02);
-      animation: fadeIn 0.2s ease-in;
-    }
-    .drawer-header {
-      padding: 10px 16px 6px;
-      font-size: 0.78rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      color: var(--ion-color-medium);
-    }
-    .drawer-chapter-list {
-      background: transparent;
-      padding: 0;
-    }
-    .chapter-drawer-item {
-      --padding-start: 16px;
-      --min-height: 46px;
-      font-size: 0.94rem;
-    }
-    .chapter-drawer-item h3 {
-      font-size: 0.94rem;
-      font-weight: 600;
-      margin: 0;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(-4px); }
-      to { opacity: 1; transform: translateY(0); }
     }
   `]
 })
@@ -290,8 +220,8 @@ export class DashboardPage implements OnInit {
 
   public visibleBooks$: Observable<Book[]> = this.dataService.visibleBooks$;
   public updateBanner$: Observable<string | null> = this.dataService.updateBanner$;
+  public watermarkUrl$: Observable<string> = this.dataService.watermarkUrl$;
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
-  public expandedBookId: string | null = null;
 
   private currentLang = 'hi';
 
@@ -299,10 +229,7 @@ export class DashboardPage implements OnInit {
     addIcons({
       sparklesOutline,
       bookOutline,
-      playCircleOutline,
-      documentTextOutline,
-      chevronDownOutline,
-      chevronUpOutline
+      arrowForwardOutline
     });
   }
 
@@ -313,7 +240,7 @@ export class DashboardPage implements OnInit {
   }
 
   public async onPullRefresh(event: CustomEvent): Promise<void> {
-    await this.dataService.syncWithFirebase();
+    await this.dataService.syncWithRemote();
     (event.target as HTMLIonRefresherElement).complete();
   }
 
@@ -321,17 +248,8 @@ export class DashboardPage implements OnInit {
     return this.dataService.localizeField(mapObj, this.currentLang);
   }
 
-  public hasRecordedAudio(chapter: Chapter): boolean {
-    const url = this.dataService.localizeField(chapter.audioUrl, this.currentLang);
-    return Boolean(url && url.trim().length > 0);
-  }
-
-  public toggleChapters(bookId: string): void {
-    this.expandedBookId = this.expandedBookId === bookId ? null : bookId;
-  }
-
-  public openChapter(bookId: string, chapterId: string): void {
-    this.router.navigate(['/reader', bookId, chapterId]);
+  public openBookChapters(bookId: string): void {
+    this.router.navigate(['/chapters', bookId]);
   }
 
   public onCoverError(event: Event): void {
@@ -340,9 +258,5 @@ export class DashboardPage implements OnInit {
 
   public trackByBookId(_index: number, book: Book): string {
     return book.id;
-  }
-
-  public trackByChapterId(_index: number, chapter: Chapter): string {
-    return chapter.id;
   }
 }

@@ -34,15 +34,28 @@ export class DataService implements OnDestroy {
 
   private configSubject = new BehaviorSubject<AppConfigPayload | null>(null);
   private isSyncingSubject = new BehaviorSubject<boolean>(false);
-  private updateBannerSubject = new BehaviorSubject<string | null>(null);
   private appStateListener?: PluginListenerHandle;
 
-  // Public Reactive Streams
   public readonly config$: Observable<AppConfigPayload> = this.configSubject.asObservable().pipe(
     filter((cfg): cfg is AppConfigPayload => cfg !== null)
   );
   public readonly isSyncing$: Observable<boolean> = this.isSyncingSubject.asObservable();
-  // Reactive update banner (reacts to language change instantly):
+
+  public readonly identity$: Observable<AppIdentity> = this.config$.pipe(
+    map(cfg => cfg.app_identity)
+  );
+
+  /**
+   * Direct reactive watermark URL stream. Resolves relative paths against mediaBaseUrl
+   * and automatically falls back to logoUrl.
+   */
+  public readonly watermarkUrl$: Observable<string> = this.identity$.pipe(
+    map(identity => {
+      const url = identity?.watermarkUrl || identity?.logoUrl;
+      return this.resolveMediaUrl(url);
+    })
+  );
+
   public readonly updateBanner$: Observable<string | null> = combineLatest([
     this.config$,
     this.storageService.selectedLanguage$
@@ -51,11 +64,6 @@ export class DataService implements OnDestroy {
       if (!cfg?.updateBannerMessage) return null;
       return this.localizeField(cfg.updateBannerMessage, lang) || null;
     })
-  );
-
-  // Derived Reactive Streams
-  public readonly identity$: Observable<AppIdentity> = this.config$.pipe(
-    map(cfg => cfg.app_identity)
   );
 
   public readonly enabledLanguages$: Observable<SupportedLanguage[]> = this.config$.pipe(
@@ -76,10 +84,6 @@ export class DataService implements OnDestroy {
     )
   );
 
-  /**
-   * Emits a dictionary of resolved UI strings for the currently selected language,
-   * automatically falling back to 'en' or 'hi' if a translation key is missing.
-   */
   public readonly uiText$: Observable<Record<string, string>> = combineLatest([
     this.config$,
     this.storageService.selectedLanguage$
@@ -87,37 +91,31 @@ export class DataService implements OnDestroy {
     map(([cfg, langCode]) => this.resolveUiTranslations(cfg.ui_translations, langCode))
   );
 
-  constructor() { }
+  constructor() {}
 
-  /**
-   * Call once inside AppComponent.ngOnInit().
-   * Initializes cached config immediately for zero-latency boot, then performs network hot-update
-   * and registers the Capacitor App resume listener.
-   */
   public async initialize(): Promise<void> {
-    // 1. Load cached JSON first for instant UI paint & offline resilience
     const cachedConfig = await this.loadCachedConfig();
     if (cachedConfig) {
-      this.applyAndPublishConfig(cachedConfig, false);
+      this.applyAndPublishConfig(cachedConfig);
     }
 
-    // 2. Attempt silent hot-update from Firebase if connected
-    await this.syncWithFirebase();
+    await this.syncWithRemote();
 
-    // 3. Register Capacitor App resume listener for hot-updates on foregrounding
     this.appStateListener = await App.addListener('appStateChange', (state: AppState) => {
       if (state.isActive) {
         this.ngZone.run(() => {
-          this.syncWithFirebase();
+          this.syncWithRemote();
         });
       }
     });
   }
 
   /**
-   * Network-first synchronization with offline fallback.
+   * Hot-Update Synchronizer:
+   * Works seamlessly with GitHub Raw URLs, jsDelivr CDN URLs, or Firebase RTDB URLs.
+   * Uses cache-busting timestamp `?t=${Date.now()}` so commits on GitHub update immediately.
    */
-  public async syncWithFirebase(): Promise<boolean> {
+  public async syncWithRemote(): Promise<boolean> {
     this.isSyncingSubject.next(true);
     try {
       const status = await Network.getStatus();
@@ -127,9 +125,9 @@ export class DataService implements OnDestroy {
         return false;
       }
 
-      // Append cache-busting query param so CDNs/proxies never serve stale JSON
-      const separator = environment.firebaseConfigUrl.includes('?') ? '&' : '?';
-      const url = `${environment.firebaseConfigUrl}${separator}t=${Date.now()}`;
+      const endpoint = environment.firebaseConfigUrl;
+      const separator = endpoint.includes('?') ? '&' : '?';
+      const url = `${endpoint}${separator}t=${Date.now()}`;
       const headers = new HttpHeaders({ 'Cache-Control': 'no-cache', Pragma: 'no-cache' });
 
       const remoteConfig = await firstValueFrom(
@@ -137,16 +135,12 @@ export class DataService implements OnDestroy {
       );
 
       if (remoteConfig && remoteConfig.app_identity) {
-        const previousTimestamp = this.configSubject.value?.lastUpdatedIso;
-        const isNewUpdate = previousTimestamp !== remoteConfig.lastUpdatedIso;
-
-        // Save to Capacitor Preferences for offline access
         await Preferences.set({
           key: this.CACHE_KEY,
           value: JSON.stringify(remoteConfig)
         });
 
-        this.applyAndPublishConfig(remoteConfig, isNewUpdate);
+        this.applyAndPublishConfig(remoteConfig);
         return true;
       }
 
@@ -161,16 +155,14 @@ export class DataService implements OnDestroy {
     }
   }
 
-  /**
-     * Universal Media URL Resolver:
-     * Handles relative paths (GitHub CDN) and absolute URLs (Firebase Storage).
-     * Also converts raw GitHub web blob URLs automatically.
-     */
+  public async syncWithFirebase(): Promise<boolean> {
+    return this.syncWithRemote();
+  }
+
   public resolveMediaUrl(urlOrPath: string | undefined): string {
     if (!urlOrPath) return '';
     let clean = urlOrPath.trim();
 
-    // Auto-convert browser GitHub blob URLs to jsDelivr CDN
     if (clean.includes('github.com/') && clean.includes('/blob/')) {
       clean = clean
         .replace(/^https?:\/\/github\.com\//, 'https://cdn.jsdelivr.net/gh/')
@@ -190,10 +182,6 @@ export class DataService implements OnDestroy {
     return `${sanitizedBase}/${sanitizedPath}`;
   }
 
-  /**
-   * Helper to localize any LocalizedStringMap object (Book title, Chapter transcript, etc.)
-   * with automatic fallback to English ('en') or Hindi ('hi').
-   */
   public localizeField(fieldMap: Record<string, string> | undefined, langCode: string): string {
     if (!fieldMap) return '';
     return (
@@ -205,9 +193,6 @@ export class DataService implements OnDestroy {
     );
   }
 
-  /**
-   * Retrieves a specific Book and Chapter reactive stream for the Reader & Audio Player page.
-   */
   public getChapterStream(bookId: string, chapterId: string): Observable<{ book: Book; chapter: Chapter } | null> {
     return this.visibleBooks$.pipe(
       map(books => {
@@ -218,16 +203,15 @@ export class DataService implements OnDestroy {
     );
   }
 
-  private applyAndPublishConfig(config: AppConfigPayload, showUpdateBanner: boolean): void {
-    // 1. Dynamically inject CSS variables for theme & watermark (resolving media URLs)
+  private applyAndPublishConfig(config: AppConfigPayload): void {
+    const effectiveWatermark = config.app_identity.watermarkUrl || config.app_identity.logoUrl;
     const resolvedIdentity: AppIdentity = {
       ...config.app_identity,
       logoUrl: this.resolveMediaUrl(config.app_identity.logoUrl),
-      watermarkUrl: this.resolveMediaUrl(config.app_identity.logoUrl)
+      watermarkUrl: this.resolveMediaUrl(effectiveWatermark)
     };
     this.themeService.applyAppIdentityTheme(resolvedIdentity);
 
-    // 2. Validate that the user's currently selected language is still enabled remotely
     const currentLang = this.storageService.getCurrentLanguageSnapshot();
     const enabledCodes = (config.supportedLanguages || [])
       .filter(l => l.isEnabled)
@@ -237,19 +221,9 @@ export class DataService implements OnDestroy {
       this.storageService.setLanguage(enabledCodes[0]);
     }
 
-    // 3. Emit new state to all reactive UI subscribers
     this.configSubject.next(config);
 
-    // 4. Update Dashboard notification banner if content changed
     const activeLang = this.storageService.getCurrentLanguageSnapshot() || 'hi';
-    if (config.updateBannerMessage) {
-      const bannerText = this.localizeField(config.updateBannerMessage, activeLang);
-      this.updateBannerSubject.next(bannerText || null);
-    } else if (showUpdateBanner) {
-      this.updateBannerSubject.next(null);
-    }
-
-    // 5. Re-schedule local notifications based on latest JSON schedule & active language
     this.notificationService.rescheduleNotifications(
       config.notification_schedules || [],
       activeLang
@@ -261,17 +235,16 @@ export class DataService implements OnDestroy {
 
     const cached = await this.loadCachedConfig();
     if (cached) {
-      this.applyAndPublishConfig(cached, false);
+      this.applyAndPublishConfig(cached);
       return;
     }
 
-    // Ultimate fallback: load bundled mock JSON if first launch is completely offline
     try {
       const bundled = await firstValueFrom(
         this.http.get<AppConfigPayload>(environment.fallbackMockPath)
       );
       if (bundled) {
-        this.applyAndPublishConfig(bundled, false);
+        this.applyAndPublishConfig(bundled);
       }
     } catch (err) {
       console.error('[DataService] Critical: No cached or bundled config available.', err);

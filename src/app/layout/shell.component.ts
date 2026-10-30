@@ -7,7 +7,6 @@ import {
 } from '@ionic/angular/standalone';
 
 import { SidebarComponent } from './sidebar.component';
-import { FooterComponent } from './footer.component';
 
 @Component({
   selector: 'app-shell',
@@ -17,22 +16,20 @@ import { FooterComponent } from './footer.component';
     IonSplitPane,
     IonMenu,
     IonRouterOutlet,
-    SidebarComponent,
-    FooterComponent
+    SidebarComponent
   ],
   template: `
     <ion-split-pane contentId="main-content" when="lg">
-      <!-- Global Slide-Out / Split-Pane Sidebar -->
+      <!-- Sidebar containing menu links and bottom footer -->
       <ion-menu contentId="main-content" type="overlay">
         <app-sidebar class="ion-page"></app-sidebar>
       </ion-menu>
 
-      <!-- Main Viewport Container (Routed Page + Global Footer) -->
+      <!-- Main Viewport: Clean full-height (Footer moved to sidebar) -->
       <div class="ion-page shell-main-viewport" id="main-content">
         <div class="shell-router-container">
           <ion-router-outlet></ion-router-outlet>
         </div>
-        <app-footer></app-footer>
       </div>
     </ion-split-pane>
   `,

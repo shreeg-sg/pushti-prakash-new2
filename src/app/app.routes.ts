@@ -30,6 +30,11 @@ export const routes: Routes = [
           import('./pages/dashboard/dashboard.page').then(m => m.DashboardPage)
       },
       {
+        path: 'chapters/:bookId',
+        loadComponent: () =>
+          import('./pages/chapters/chapters.page').then(m => m.ChaptersPage)
+      },
+      {
         path: 'reader/:bookId/:chapterId',
         loadComponent: () =>
           import('./pages/reader/reader.page').then(m => m.ReaderPage)
