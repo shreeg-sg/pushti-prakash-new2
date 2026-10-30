@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -279,6 +279,13 @@ import { Book, Chapter } from '../../core/models/app-config.model';
   `]
 })
 export class ReaderPage implements OnInit, OnDestroy {
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private toastCtrl = inject(ToastController);
+  private dataService = inject(DataService);
+  private storageService = inject(StorageService);
+  public ttsService = inject(TtsService);
+
   public playerState$: Observable<PlayerState> = this.ttsService.playerState$;
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
   public isBookmarked$!: Observable<boolean>;
@@ -297,14 +304,7 @@ export class ReaderPage implements OnInit, OnDestroy {
 
   private readonly SPEED_STEPS = [0.85, 1.0, 1.25, 1.5];
 
-  constructor(
-    private route: ActivatedRoute,
-    private router: Router,
-    private toastCtrl: ToastController,
-    private dataService: DataService,
-    private storageService: StorageService,
-    public ttsService: TtsService
-  ) {
+  constructor() {
     addIcons({
       star,
       starOutline,

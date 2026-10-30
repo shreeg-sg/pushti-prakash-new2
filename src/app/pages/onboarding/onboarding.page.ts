@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import {
@@ -9,9 +9,7 @@ import {
   IonCardSubtitle,
   IonCardContent,
   IonButton,
-  IonIcon,
-  IonChip,
-  IonLabel
+  IonIcon
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { checkmarkCircle, arrowForwardOutline, globeOutline } from 'ionicons/icons';
@@ -33,9 +31,7 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
     IonCardSubtitle,
     IonCardContent,
     IonButton,
-    IonIcon,
-    IonChip,
-    IonLabel
+    IonIcon
   ],
   template: `
     <ion-content class="ion-padding onboarding-bg">
@@ -168,17 +164,17 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
   `]
 })
 export class OnboardingPage implements OnInit {
+  private router = inject(Router);
+  private dataService = inject(DataService);
+  private storageService = inject(StorageService);
+
   public identity$: Observable<AppIdentity> = this.dataService.identity$;
   public enabledLanguages$: Observable<SupportedLanguage[]> = this.dataService.enabledLanguages$;
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
 
   public selectedLang = 'hi';
 
-  constructor(
-    private router: Router,
-    private dataService: DataService,
-    private storageService: StorageService
-  ) {
+  constructor() {
     addIcons({ checkmarkCircle, arrowForwardOutline, globeOutline });
   }
 

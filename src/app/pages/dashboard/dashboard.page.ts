@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import {
@@ -212,17 +212,17 @@ import { Book, Chapter } from '../../core/models/app-config.model';
   `]
 })
 export class DashboardPage implements OnInit {
+  private router = inject(Router);
+  private dataService = inject(DataService);
+  private storageService = inject(StorageService);
+
   public visibleBooks$: Observable<Book[]> = this.dataService.visibleBooks$;
   public updateBanner$: Observable<string | null> = this.dataService.updateBanner$;
   public bannerDismissed = false;
 
   private currentLang = 'hi';
 
-  constructor(
-    private router: Router,
-    private dataService: DataService,
-    private storageService: StorageService
-  ) {
+  constructor() {
     addIcons({
       sparklesOutline,
       closeCircleOutline,

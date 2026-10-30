@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
   IonContent,
@@ -122,6 +122,9 @@ import { StorageService } from '../../core/services/storage.service';
   `]
 })
 export class AboutPage {
+  private dataService = inject(DataService);
+  private storageService = inject(StorageService);
+
   public viewModel$ = combineLatest([
     this.dataService.config$,
     this.dataService.uiText$,
@@ -140,10 +143,7 @@ export class AboutPage {
     }))
   );
 
-  constructor(
-    private dataService: DataService,
-    private storageService: StorageService
-  ) {
+  constructor() {
     addIcons({ chatboxEllipsesOutline, mailOutline, globeOutline });
   }
 

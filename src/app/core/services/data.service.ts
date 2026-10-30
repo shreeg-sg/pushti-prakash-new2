@@ -1,4 +1,4 @@
-import { Injectable, NgZone, OnDestroy } from '@angular/core';
+import { Injectable, NgZone, OnDestroy, inject } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable, combineLatest, firstValueFrom } from 'rxjs';
 import { map, filter } from 'rxjs/operators';
@@ -24,6 +24,12 @@ import { NotificationService } from './notification.service';
   providedIn: 'root'
 })
 export class DataService implements OnDestroy {
+  private http = inject(HttpClient);
+  private ngZone = inject(NgZone);
+  private themeService = inject(ThemeService);
+  private storageService = inject(StorageService);
+  private notificationService = inject(NotificationService);
+
   private readonly CACHE_KEY = `app_config_cache_${environment.clientKey}`;
 
   private configSubject = new BehaviorSubject<AppConfigPayload | null>(null);
@@ -72,13 +78,7 @@ export class DataService implements OnDestroy {
     map(([cfg, langCode]) => this.resolveUiTranslations(cfg.ui_translations, langCode))
   );
 
-  constructor(
-    private http: HttpClient,
-    private ngZone: NgZone,
-    private themeService: ThemeService,
-    private storageService: StorageService,
-    private notificationService: NotificationService
-  ) {}
+  constructor() {}
 
   /**
    * Call once inside AppComponent.ngOnInit().

@@ -1,4 +1,4 @@
-import { Component, Input, OnInit } from '@angular/core';
+import { Component, Input, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, NavigationEnd } from '@angular/router';
 import {
@@ -23,7 +23,8 @@ import {
   closeOutline
 } from 'ionicons/icons';
 import { Observable, combineLatest } from 'rxjs';
-import { filter, map, startWith, firstValueFrom } from 'rxjs/operators';
+import { filter, map, startWith } from 'rxjs/operators';
+import { firstValueFrom } from 'rxjs';
 
 import { DataService } from '../core/services/data.service';
 import { StorageService } from '../core/services/storage.service';
@@ -127,6 +128,12 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
   `]
 })
 export class HeaderComponent implements OnInit {
+  private router = inject(Router);
+  private navCtrl = inject(NavController);
+  private actionSheetCtrl = inject(ActionSheetController);
+  private dataService = inject(DataService);
+  private storageService = inject(StorageService);
+
   /**
    * Optional explicit title override (e.g., Chapter Title passed directly by ReaderComponent).
    * If omitted, HeaderComponent resolves the title automatically from the active route & JSON.
@@ -147,13 +154,7 @@ export class HeaderComponent implements OnInit {
   public shouldShowBack$!: Observable<boolean>;
   public resolvedRouteTitle$!: Observable<string>;
 
-  constructor(
-    private router: Router,
-    private navCtrl: NavController,
-    private actionSheetCtrl: ActionSheetController,
-    private dataService: DataService,
-    private storageService: StorageService
-  ) {
+  constructor() {
     addIcons({
       textOutline,
       languageOutline,

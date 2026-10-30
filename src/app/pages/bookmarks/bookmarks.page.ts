@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import {
@@ -102,14 +102,14 @@ interface ResolvedBookmarkView {
   `]
 })
 export class BookmarksPage implements OnInit {
+  private router = inject(Router);
+  private dataService = inject(DataService);
+  private storageService = inject(StorageService);
+
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
   public resolvedBookmarks$!: Observable<ResolvedBookmarkView[]>;
 
-  constructor(
-    private router: Router,
-    private dataService: DataService,
-    private storageService: StorageService
-  ) {
+  constructor() {
     addIcons({ bookmarkOutline, trashOutline, bookOutline });
   }
 

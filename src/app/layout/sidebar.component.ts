@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, NavigationEnd } from '@angular/router';
 import {
@@ -205,6 +205,11 @@ import { AppIdentity, Book, Chapter } from '../core/models/app-config.model';
   `]
 })
 export class SidebarComponent implements OnInit {
+  private router = inject(Router);
+  private menuCtrl = inject(MenuController);
+  private dataService = inject(DataService);
+  private storageService = inject(StorageService);
+
   public identity$: Observable<AppIdentity> = this.dataService.identity$;
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
   public visibleBooks$: Observable<Book[]> = this.dataService.visibleBooks$;
@@ -214,12 +219,7 @@ export class SidebarComponent implements OnInit {
 
   private currentLang = 'hi';
 
-  constructor(
-    private router: Router,
-    private menuCtrl: MenuController,
-    private dataService: DataService,
-    private storageService: StorageService
-  ) {
+  constructor() {
     addIcons({
       homeOutline,
       bookmarkOutline,
