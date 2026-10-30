@@ -4,7 +4,7 @@
   "updateBannerMessage": {
     "hi": "नया अध्याय जोड़ा गया: श्री यमुनाष्टकम् अर्थ सहित!",
     "gu": "નવું પ્રકરણ ઉમેરાયું: શ્રી યમુનાષ્ટકમ્ અર્થ સાથે!",
-    "en": "New chapter added: Shri Yamunashtakam with translation!"
+    "en": "New chapter added: Updated"
   },
   "app_identity": {
     "defaultAppName": "PushtiPrakash",
@@ -191,9 +191,9 @@
             "en": "Namami Yamunamaham Sakala-Siddhi-Hetum Muda\nMurari-Pada-Pankaja-Sphurad-Amanda-Renutkatam...\n\nMeaning: I joyfully bow to Shri Yamuna, the bestower of all spiritual perfection..."
           },
           "audioUrl": {
-            "hi": "audio/MANGALACHARANAM.mp3",
-            "gu": "audio/MANGALACHARANAM.mp3",
-            "en": "audio/MANGALACHARANAM.mp3"
+            "hi": "audio/yamunashtakam.mp3",
+            "gu": "audio/yamunashtakam.mp3",
+            "en": "audio/yamunashtakam.mp3"
           },
           "durationSeconds": 245
         },
@@ -212,9 +212,9 @@
             "en": "Having bowed to Lord Hari, who is eternal bliss, I state the well-established conclusion of all scriptures for the enlightenment of beginners."
           },
           "audioUrl": {
-            "hi": "",
-            "gu": "",
-            "en": ""
+            "hi": "audio/MANGALACHARANAM.mp3",
+            "gu": "audio/MANGALACHARANAM.mp3",
+            "en": "audio/MANGALACHARANAM.mp3"
           }
         }
       ]
@@ -256,6 +256,25 @@
       "hour": 19,
       "minute": 30,
       "repeatsDaily": true
-    }
+    },
+    {
+    "id": 201,
+    "isEnabled": true,
+    "title": { 
+      "hi": "प्रबोधिनी एकादशी (तुलसी विवाह)", 
+      "gu": "પ્રબોધિની એકાદશી",
+      "en": "Prabodhini Ekadashi"
+    },
+    "body": { 
+      "hi": "आज प्रबोधिनी एकादशी का पावन पर्व है। श्री यमुनाष्टकम् का पाठ करें।",
+      "gu": "આજે પ્રબોધિની એકાદશીનો પવિત્ર પર્વ છે.",
+      "en": "Today is Prabodhini Ekadashi. Read Shri Yamunashtakam."
+    },
+    "date": "2026-11-20",
+    "hour": 6,
+    "minute": 0,
+    "targetBookId": "book_shodash_granth",
+    "targetChapterId": "ch_yamunashtakam"
+  }
   ]
 }

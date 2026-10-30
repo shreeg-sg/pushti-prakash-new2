@@ -70,9 +70,10 @@ export interface NotificationSchedule {
   isEnabled: boolean;
   title: LocalizedStringMap;
   body: LocalizedStringMap;
-  hour: number;       // 24-hour format (0-23)
-  minute: number;     // (0-59)
-  repeatsDaily: boolean;
+  date?: string;      // Optional specific date: "YYYY-MM-DD" (e.g., "2026-11-20")
+  hour: number;       // 0-23
+  minute: number;     // 0-59
+  repeatsDaily?: boolean; // Set to true if recurring every day
   targetBookId?: string;
   targetChapterId?: string;
 }
