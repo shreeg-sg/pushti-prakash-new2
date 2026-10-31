@@ -2,7 +2,8 @@ import { Injectable, NgZone, OnDestroy } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { Filesystem, Directory } from '@capacitor/filesystem';
-import { Capacitor } from '@capacitor/core';
+import { App, AppState } from '@capacitor/app';
+import { Capacitor, PluginListenerHandle } from '@capacitor/core';
 
 export type PlaybackMode = 'audio' | 'tts' | 'idle';
 
@@ -10,10 +11,21 @@ export interface PlayerState {
   mode: PlaybackMode;
   isPlaying: boolean;
   isLoading: boolean;
-  currentTime: number; // Seconds (for 'audio') or current chunk index (for 'tts')
-  duration: number; // Total seconds (for 'audio') or total chunks (for 'tts')
-  playbackRate: number; // e.g., 0.75, 1.0, 1.25, 1.5, 2.0
+  currentTime: number;
+  duration: number;
+  playbackRate: number;
   activeChunkText?: string;
+}
+
+export interface ChapterMediaMetadata {
+  chapterId: string;
+  chapterTitle?: string;
+  bookTitle?: string;
+  coverImageUrl?: string;
+  langCode: string;
+  ttsLocale: string;
+  audioUrl: string;
+  transcript: string;
 }
 
 @Injectable({
@@ -25,6 +37,11 @@ export class TtsService implements OnDestroy {
   private currentChunkIndex = 0;
   private activeTtsLocale = 'hi-IN';
   private isTtsCancelled = false;
+  private activeMetadata?: ChapterMediaMetadata;
+
+  // Screen Wake Lock Sentinel to keep screen ON while playing
+  private wakeLockSentinel: any = null;
+  private appStateListener?: PluginListenerHandle;
 
   private stateSubject = new BehaviorSubject<PlayerState>({
     mode: 'idle',
@@ -37,22 +54,16 @@ export class TtsService implements OnDestroy {
 
   public readonly playerState$: Observable<PlayerState> = this.stateSubject.asObservable();
 
-  constructor(private ngZone: NgZone) {}
+  constructor(private ngZone: NgZone) {
+    // REQUIREMENT 1: NO BACKGROUND AUDIO
+    // When the user minimizes the app or turns off the screen, automatically pause playback
+    this.setupAppVisibilityPauseListener();
+  }
 
-  /**
-   * Initializes playback source for the active chapter and language.
-   * If audioUrl is non-empty, attempts to load recorded MP3.
-   * If audioUrl is empty or fails to load, prepares TTS sentence chunks.
-   */
-  public async loadChapterMedia(params: {
-    chapterId: string;
-    langCode: string;
-    ttsLocale: string;
-    audioUrl: string;
-    transcript: string;
-  }): Promise<void> {
+  public async loadChapterMedia(params: ChapterMediaMetadata): Promise<void> {
     await this.stop();
 
+    this.activeMetadata = params;
     const cleanAudioUrl = (params.audioUrl || '').trim();
     this.activeTtsLocale = params.ttsLocale || this.mapLangToLocale(params.langCode);
     this.ttsChunks = this.splitTranscriptIntoChunks(params.transcript || '');
@@ -84,6 +95,9 @@ export class TtsService implements OnDestroy {
   public async play(): Promise<void> {
     const state = this.stateSubject.value;
 
+    // Keep screen awake while playing
+    await this.requestScreenWakeLock();
+
     if (state.mode === 'audio' && this.audioElement) {
       try {
         this.audioElement.playbackRate = state.playbackRate;
@@ -105,6 +119,9 @@ export class TtsService implements OnDestroy {
   public async pause(): Promise<void> {
     const state = this.stateSubject.value;
 
+    // Release screen wake lock so phone can sleep normally when paused
+    await this.releaseScreenWakeLock();
+
     if (state.mode === 'audio' && this.audioElement) {
       this.audioElement.pause();
       this.patchState({ isPlaying: false });
@@ -120,6 +137,7 @@ export class TtsService implements OnDestroy {
 
   public async stop(): Promise<void> {
     this.isTtsCancelled = true;
+    await this.releaseScreenWakeLock();
 
     if (this.audioElement) {
       this.audioElement.pause();
@@ -181,7 +199,50 @@ export class TtsService implements OnDestroy {
     }
   }
 
-  // --- Internal Audio Logic ---
+  // --- REQUIREMENT 1: Screen Wake Lock (Keep Screen ON until finished) ---
+
+  private async requestScreenWakeLock(): Promise<void> {
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+      try {
+        this.wakeLockSentinel = await (navigator as any).wakeLock.request('screen');
+        console.log('[TtsService] Screen WakeLock acquired: Screen will stay awake during playback.');
+        this.wakeLockSentinel.addEventListener('release', () => {
+          this.wakeLockSentinel = null;
+        });
+      } catch (err) {
+        console.warn('[TtsService] Screen WakeLock request error:', err);
+      }
+    }
+  }
+
+  private async releaseScreenWakeLock(): Promise<void> {
+    if (this.wakeLockSentinel) {
+      try {
+        await this.wakeLockSentinel.release();
+      } catch {
+        // Ignore release errors
+      }
+      this.wakeLockSentinel = null;
+      console.log('[TtsService] Screen WakeLock released: Screen sleep timeout restored.');
+    }
+  }
+
+  // --- REQUIREMENT 1: NO BACKGROUND PLAYBACK ---
+  private async setupAppVisibilityPauseListener(): Promise<void> {
+    this.appStateListener = await App.addListener('appStateChange', (state: AppState) => {
+      // When the user minimizes the app or screen locks, automatically pause
+      if (!state.isActive) {
+        this.ngZone.run(() => {
+          if (this.stateSubject.value.isPlaying) {
+            console.log('[TtsService] App minimized or backgrounded. Pausing playback (No background audio).');
+            this.pause();
+          }
+        });
+      }
+    });
+  }
+
+  // --- Audio Setup ---
 
   private async setupRecordedAudio(
     chapterId: string,
@@ -206,10 +267,8 @@ export class TtsService implements OnDestroy {
 
     audio.addEventListener('loadedmetadata', () => {
       this.ngZone.run(() => {
-        this.patchState({
-          isLoading: false,
-          duration: isFinite(audio.duration) ? Math.floor(audio.duration) : 0
-        });
+        const dur = isFinite(audio.duration) ? Math.floor(audio.duration) : 0;
+        this.patchState({ isLoading: false, duration: dur });
       });
     });
 
@@ -222,6 +281,7 @@ export class TtsService implements OnDestroy {
     audio.addEventListener('ended', () => {
       this.ngZone.run(() => {
         this.patchState({ isPlaying: false, currentTime: 0 });
+        this.releaseScreenWakeLock();
       });
     });
 
@@ -266,8 +326,6 @@ export class TtsService implements OnDestroy {
       // Ignore background download failure
     }
   }
-
-  // --- Internal TTS Engine (Dual Web Speech API + Capacitor Native Engine) ---
 
   private switchToTtsFallback(): void {
     if (this.audioElement) {
@@ -321,18 +379,13 @@ export class TtsService implements OnDestroy {
           currentTime: 0,
           activeChunkText: this.ttsChunks[0] || ''
         });
+        this.releaseScreenWakeLock();
       });
     }
   }
 
-  /**
-   * Dual-Engine Speech Synthesizer:
-   * - Browser / Web: Uses window.speechSynthesis (Web Speech API)
-   * - Android / iOS: Uses Capacitor TextToSpeech plugin with automatic locale fallback
-   */
   private speakChunk(text: string, lang: string, rate: number): Promise<void> {
     return new Promise(async (resolve, reject) => {
-      // 1. Native Android / iOS Device
       if (Capacitor.isNativePlatform()) {
         try {
           await TextToSpeech.speak({
@@ -341,7 +394,7 @@ export class TtsService implements OnDestroy {
             rate,
             pitch: 1.0,
             volume: 1.0,
-            category: 'playback'
+            category: 'ambient' // Ambient mode ensures it does not force background audio
           });
           resolve();
           return;
@@ -353,13 +406,12 @@ export class TtsService implements OnDestroy {
             resolve();
             return;
           } catch {
-            resolve(); // Do not break the reading loop
+            resolve();
             return;
           }
         }
       }
 
-      // 2. Web Browser (ionic serve / ng serve)
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
         window.speechSynthesis.resume();
@@ -374,7 +426,7 @@ export class TtsService implements OnDestroy {
 
         utterance.onerror = (e) => {
           console.warn('[TtsService] Web Speech utterance error:', e);
-          resolve(); // Resolve so the loop continues
+          resolve();
         };
 
         window.speechSynthesis.speak(utterance);
@@ -424,6 +476,7 @@ export class TtsService implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.appStateListener?.remove();
     this.stop();
   }
 }

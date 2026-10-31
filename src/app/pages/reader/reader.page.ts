@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, HostListener, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -63,14 +63,21 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     </app-header>
 
     <ion-content class="ion-padding reader-transcript-container">
-      <!-- Watermark Overlay (Unblocked by Shadow DOM, visible 12% opacity behind transcript) -->
+      <!-- Watermark Background Emblem (12% opacity behind stotras) -->
       <div class="watermark-overlay" aria-hidden="true"></div>
 
       <div class="reader-body" *ngIf="activeBook && activeChapter">
         <div class="book-breadcrumb">{{ localize(activeBook.title) }}</div>
         <h1 class="chapter-heading">{{ localize(activeChapter.title) }}</h1>
 
-        <div class="transcript-content">
+        <!-- Loading spinner while on-demand transcript loads from split JSON -->
+        <div class="transcript-loading" *ngIf="isLoadingTranscript">
+          <ion-spinner name="crescent" color="primary"></ion-spinner>
+          <p class="loading-label">Loading sacred text...</p>
+        </div>
+
+        <!-- Sacred Transcript: Completely protected from text selection and copying -->
+        <div class="transcript-content" *ngIf="!isLoadingTranscript">
           <p
             *ngFor="let paragraph of transcriptParagraphs"
             class="transcript-paragraph"
@@ -79,6 +86,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
           </p>
         </div>
 
+        <!-- Previous / Next Chapter Stepper Navigation -->
         <div class="chapter-step-nav">
           <ion-button
             fill="outline"
@@ -101,7 +109,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       </div>
     </ion-content>
 
-    <!-- Floating Audio/TTS Player (Play/Pause ONLY; Speed Selector Popover List) -->
+    <!-- Floating Audio/TTS Player Dock with Screen-Awake Integration -->
     <div class="floating-audio-dock" *ngIf="playerState$ | async as state">
       <div class="player-meta-row">
         <ion-badge [color]="state.mode === 'audio' ? 'secondary' : 'tertiary'" class="mode-badge">
@@ -132,7 +140,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       </ion-range>
 
       <div class="player-controls-row">
-        <!-- Speed Picker with Popover List -->
+        <!-- Speed Picker with Clean Popover List -->
         <div class="speed-picker-wrapper">
           <ion-icon name="speedometer-outline" class="speed-icon"></ion-icon>
           <ion-select
@@ -151,7 +159,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
           </ion-select>
         </div>
 
-        <!-- Centered Transport: Play / Pause ONLY -->
+        <!-- Primary Play/Pause Button (Keeps screen awake while playing) -->
         <div class="primary-transport">
           <ion-button
             shape="round"
@@ -173,9 +181,24 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     </div>
   `,
   styles: [`
+    /* Anti-Copy & Text-Protection Shield */
+    .reader-transcript-container,
+    .reader-body,
+    .transcript-content,
+    .transcript-paragraph,
+    .chapter-heading,
+    .book-breadcrumb {
+      -webkit-user-select: none !important;
+      -moz-user-select: none !important;
+      -ms-user-select: none !important;
+      user-select: none !important;
+      -webkit-touch-callout: none !important;
+    }
+
     .reader-transcript-container {
       position: relative;
     }
+
     .watermark-overlay {
       position: fixed;
       top: 50%;
@@ -183,14 +206,15 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       transform: translate(-50%, -50%);
       width: 280px;
       height: 280px;
-      background-image: var(--app-watermark-image);
+      background-image: var(--app-watermark-image, none);
       background-repeat: no-repeat;
       background-position: center;
       background-size: contain;
-      opacity: 0.12; /* Clearly visible logo watermark */
+      opacity: 0.12;
       pointer-events: none;
       z-index: 0;
     }
+
     .reader-body {
       max-width: 780px;
       margin: 0 auto;
@@ -198,6 +222,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       position: relative;
       z-index: 1;
     }
+
     .book-breadcrumb {
       font-size: 0.85rem;
       font-weight: 700;
@@ -206,6 +231,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       color: var(--ion-color-primary);
       margin-bottom: 4px;
     }
+
     .chapter-heading {
       font-size: 1.45rem;
       font-weight: 800;
@@ -215,6 +241,21 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       border-bottom: 2px solid rgba(var(--ion-color-primary-rgb), 0.15);
       padding-bottom: 10px;
     }
+
+    .transcript-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 0;
+      color: var(--ion-color-medium);
+    }
+
+    .loading-label {
+      margin-top: 10px;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
     .transcript-paragraph {
       font-size: var(--app-reader-font-size, 1.05rem);
       line-height: var(--app-reader-line-height, 1.65);
@@ -224,10 +265,12 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       border-radius: 8px;
       transition: background-color 0.2s ease;
     }
+
     .active-tts-chunk {
       background-color: rgba(var(--ion-color-secondary-rgb), 0.25);
       border-left: 3px solid var(--ion-color-primary);
     }
+
     .chapter-step-nav {
       display: flex;
       justify-content: space-between;
@@ -235,11 +278,12 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       padding-top: 16px;
       border-top: 1px solid rgba(0, 0, 0, 0.08);
     }
+
     .floating-audio-dock {
       position: fixed;
       left: 12px;
       right: 12px;
-      bottom: 42px;
+      bottom: 24px;
       max-width: 680px;
       margin: 0 auto;
       background: var(--ion-card-background, #fff8ec);
@@ -249,11 +293,13 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       box-shadow: 0 10px 28px rgba(0, 0, 0, 0.15);
       z-index: 100;
     }
+
     .player-meta-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
+
     .mode-badge {
       display: inline-flex;
       align-items: center;
@@ -262,11 +308,13 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       border-radius: 12px;
       font-size: 0.75rem;
     }
+
     .time-counter {
       font-size: 0.78rem;
       font-weight: 600;
       color: var(--ion-color-medium);
     }
+
     .player-scrub-bar {
       --bar-height: 4px;
       --knob-size: 14px;
@@ -274,11 +322,13 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       padding-bottom: 0;
       margin: -4px 0;
     }
+
     .player-controls-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
+
     .speed-picker-wrapper {
       display: flex;
       align-items: center;
@@ -286,11 +336,13 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       border-radius: 14px;
       padding: 2px 8px;
     }
+
     .speed-icon {
       font-size: 1rem;
       color: var(--ion-color-primary);
       margin-right: 2px;
     }
+
     .speed-select-popover {
       --padding-start: 2px;
       --padding-end: 2px;
@@ -299,16 +351,19 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       color: var(--ion-color-primary);
       min-height: 32px;
     }
+
     .primary-transport {
       display: flex;
       align-items: center;
       justify-content: center;
     }
+
     .play-pause-btn {
       width: 48px;
       height: 48px;
       --border-radius: 50%;
     }
+
     .transport-spacer-right {
       width: 76px;
     }
@@ -330,6 +385,7 @@ export class ReaderPage implements OnInit, OnDestroy {
   public activeChapter?: Chapter;
   public activeChapterTitle = '';
   public transcriptParagraphs: string[] = [];
+  public isLoadingTranscript = false;
   public prevChapterId?: string;
   public nextChapterId?: string;
 
@@ -337,6 +393,16 @@ export class ReaderPage implements OnInit, OnDestroy {
   private bookId = '';
   private chapterId = '';
   private routeMediaSub?: Subscription;
+
+  // Intercept and block all mobile long-press menus, clipboard copying, cutting, and dragging
+  @HostListener('contextmenu', ['$event'])
+  @HostListener('copy', ['$event'])
+  @HostListener('cut', ['$event'])
+  @HostListener('paste', ['$event'])
+  @HostListener('selectstart', ['$event'])
+  public blockCopyPaste(event: Event): void {
+    event.preventDefault();
+  }
 
   constructor() {
     addIcons({
@@ -383,9 +449,14 @@ export class ReaderPage implements OnInit, OnDestroy {
         this.activeChapter = resolved.chapter;
         this.activeChapterTitle = this.dataService.localizeField(resolved.chapter.title, lang);
 
-        const rawTranscript = this.dataService.localizeField(resolved.chapter.transcript, lang);
+        // Loads on-demand modular transcript from split JSONs (chapters/{bookId}/{chapterId}.json)
+        this.isLoadingTranscript = true;
+        const transcriptMap = await this.dataService.loadChapterTranscript(this.bookId, resolved.chapter);
+        this.isLoadingTranscript = false;
+
+        const rawTranscript = this.dataService.localizeField(transcriptMap, lang);
         this.transcriptParagraphs = rawTranscript
-          .split(/\\n\\s*\\n|\\n/g)
+          .split(/\n\s*\n|\n/g)
           .map(p => p.trim())
           .filter(p => p.length > 0);
 
@@ -396,9 +467,13 @@ export class ReaderPage implements OnInit, OnDestroy {
 
         const rawAudioUrl = this.dataService.localizeField(resolved.chapter.audioUrl, lang);
         const resolvedAudioUrl = this.dataService.resolveMediaUrl(rawAudioUrl);
+        const resolvedCoverUrl = this.dataService.resolveMediaUrl(resolved.book.coverImageUrl);
 
         await this.ttsService.loadChapterMedia({
           chapterId: resolved.chapter.id,
+          chapterTitle: this.activeChapterTitle,
+          bookTitle: this.dataService.localizeField(resolved.book.title, lang),
+          coverImageUrl: resolvedCoverUrl,
           langCode: lang,
           ttsLocale,
           audioUrl: resolvedAudioUrl,

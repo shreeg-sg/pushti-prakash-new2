@@ -3,6 +3,6 @@ export const environment = {
     appVersion: '__BUILD_VERSION__',
     clientKey: '__CLIENT_KEY__',
     firebaseConfigUrl: '__FIREBASE_CONFIG_URL__',
-    fallbackMockPath: 'assets/mock/data.json',
+    fallbackMockPath: 'assets/mock/',
     developerCredit: 'Developed by Sameer Purushottam Gujarathi'
   };

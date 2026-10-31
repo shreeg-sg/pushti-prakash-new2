@@ -1,0 +1,53 @@
+[
+    {
+      "id": "book_shodash_granth",
+      "order": 1,
+      "isVisible": true,
+      "coverImageUrl": "images/shodash_granth.jpg",
+      "title": {
+        "hi": "षोडश ग्रंथ (Shodash Granth)",
+        "gu": "ષોડશ ગ્રંથ",
+        "en": "Shodash Granth"
+      },
+      "subtitle": {
+        "hi": "महाप्रभु श्री वल्लभाचार्य विरचित १६ ग्रंथ",
+        "gu": "મહાપ્રભુ શ્રી વલ્લભાચાર્ય રચિત ૧૬ ગ્રંથો",
+        "en": "16 Foundational Treatises by Shri Vallabhacharya"
+      },
+      "chapters": [
+        {
+          "id": "ch_yamunashtakam",
+          "order": 1,
+          "isVisible": true,
+          "title": {
+            "hi": "१. श्री यमुनाष्टकम्",
+            "gu": "૧. શ્રી યમુનાષ્ટકમ્",
+            "en": "1. Shri Yamunashtakam"
+          },
+          "audioUrl": {
+            "hi": "audio/yamunashtakam.mp3",
+            "gu": "audio/yamunashtakam.mp3",
+            "en": "audio/yamunashtakam.mp3"
+          },
+          "durationSeconds": 245,
+          "contentUrl": "chapters/book_shodash_granth/ch_yamunashtakam.json"
+        },
+        {
+          "id": "ch_balabodha",
+          "order": 2,
+          "isVisible": true,
+          "title": {
+            "hi": "२. बालबोधः",
+            "gu": "૨. બાલબોધઃ",
+            "en": "2. Balabodha"
+          },
+          "audioUrl": {
+            "hi": "audio/MANGALACHARANAM.mp3",
+            "gu": "audio/MANGALACHARANAM.mp3",
+            "en": "audio/MANGALACHARANAM.mp3"
+          },
+          "contentUrl": "chapters/book_shodash_granth/ch_balabodha.json"
+        }
+      ]
+    }
+  ]

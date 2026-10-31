@@ -1,0 +1,22 @@
+{
+    "defaultAppName": "PushtiPrakash",
+    "appName": {
+      "hi": "पुष्टिप्रकाश",
+      "gu": "પુષ્ટિપ્રકાશ",
+      "mr": "पुष्टीप्रकाश",
+      "en": "PushtiPrakash"
+    },
+    "mediaBaseUrl": "https://cdn.jsdelivr.net/gh/shreeg-sg/pushtiprakash-media@main/src/assets",
+    "logoUrl": "images/logo.png",
+    "watermarkUrl": "images/logo.png",
+    "theme": {
+      "primary": "#8B2635",
+      "secondary": "#D4AF37",
+      "tertiary": "#2E5A44",
+      "background": "#FFFDF9",
+      "surface": "#FFF8EC",
+      "textPrimary": "#2C1810",
+      "textSecondary": "#6E4F42"
+    }
+  }
+  

@@ -17,19 +17,19 @@ export interface ThemeColors {
 }
 
 export interface AppIdentity {
-  appName: Record<string, string>; // Localized app title or default string
+  appName: Record<string, string>;
   defaultAppName: string;
   logoUrl: string;
   watermarkUrl: string;
-  mediaBaseUrl?: string; // Optional CDN or GitHub Pages root, e.g. "https://cdn.jsdelivr.net/gh/shreeg-sg/pushtiprakash-media@main"
+  mediaBaseUrl?: string;
   theme: ThemeColors;
 }
 
 export interface SupportedLanguage {
-  code: string;       // e.g., 'hi', 'gu', 'mr', 'en'
-  name: string;       // e.g., 'हिन्दी', 'ગુજરાતી', 'मराठी', 'English'
-  ttsLocale: string;  // e.g., 'hi-IN', 'gu-IN', 'mr-IN', 'en-IN'
-  isEnabled: boolean; // Remote toggle to enable/disable language
+  code: string;
+  name: string;
+  ttsLocale: string;
+  isEnabled: boolean;
 }
 
 export type LocalizedStringMap = Record<string, string>;
@@ -42,7 +42,7 @@ export interface AboutInfo {
   description: LocalizedStringMap;
   contactEmail?: string;
   websiteUrl?: string;
-  feedback_links: LocalizedStringMap; // Maps language code ('hi', 'en') to Google Form URL
+  feedback_links?: LocalizedStringMap;
 }
 
 export interface Chapter {
@@ -50,9 +50,18 @@ export interface Chapter {
   order: number;
   isVisible: boolean;
   title: LocalizedStringMap;
-  transcript: LocalizedStringMap;
-  audioUrl: LocalizedStringMap; // Empty string "" triggers native TTS fallback
+  audioUrl?: LocalizedStringMap;
   durationSeconds?: number;
+  // Supports both embedded and modular on-demand transcript loading
+  transcript?: LocalizedStringMap;
+  contentUrl?: string; // Fixes: Property 'contentUrl' does not exist on type 'Chapter'
+}
+
+// Fixes: Module has no exported member 'ChapterContentPayload'
+export interface ChapterContentPayload {
+  id: string;
+  bookId?: string;
+  transcript: LocalizedStringMap;
 }
 
 export interface Book {
@@ -70,10 +79,10 @@ export interface NotificationSchedule {
   isEnabled: boolean;
   title: LocalizedStringMap;
   body: LocalizedStringMap;
-  date?: string;      // Optional specific date: "YYYY-MM-DD" (e.g., "2026-11-20")
-  hour: number;       // 0-23
-  minute: number;     // 0-59
-  repeatsDaily?: boolean; // Set to true if recurring every day
+  date?: string;
+  hour: number;
+  minute: number;
+  repeatsDaily?: boolean;
   targetBookId?: string;
   targetChapterId?: string;
 }
@@ -85,7 +94,7 @@ export interface AppConfigPayload {
   app_identity: AppIdentity;
   supportedLanguages: SupportedLanguage[];
   ui_translations: UiTranslations;
-  about_info: AboutInfo;
+  about_info?: AboutInfo;
   books: Book[];
-  notification_schedules: NotificationSchedule[];
+  notification_schedules?: NotificationSchedule[];
 }

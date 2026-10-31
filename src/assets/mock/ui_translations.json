@@ -1,0 +1,92 @@
+{
+    "welcome_title": {
+      "hi": "पुष्टिप्रकाश में आपका स्वागत है",
+      "gu": "પુષ્ટિપ્રકાશમાં આપનું સ્વાગત છે",
+      "en": "Welcome to PushtiPrakash"
+    },
+    "select_language_prompt": {
+      "hi": "कृपया अपनी पसंदीदा भाषा चुनें",
+      "gu": "કૃપા કરીને તમારી પસંદગીની ભાષા પસંદ કરો",
+      "en": "Please select your preferred language"
+    },
+    "continue_button": {
+      "hi": "आगे बढ़ें",
+      "gu": "આગળ વધો",
+      "en": "Continue"
+    },
+    "nav_dashboard": {
+      "hi": "मुख्य पृष्ठ",
+      "gu": "મુખ્ય પૃષ્ઠ",
+      "en": "Dashboard"
+    },
+    "nav_bookmarks": {
+      "hi": "बुकमार्क (पसंदीदा)",
+      "gu": "બુકમાર્ક્સ",
+      "en": "Bookmarks"
+    },
+    "nav_about": {
+      "hi": "हमारे बारे में",
+      "gu": "અમારા વિશે",
+      "en": "About Us"
+    },
+    "nav_books_header": {
+      "hi": "ग्रंथ एवं अध्याय",
+      "gu": "ગ્રંથો અને પ્રકરણો",
+      "en": "Books & Chapters"
+    },
+    "font_size_title": {
+      "hi": "अक्षर का आकार चुनें",
+      "gu": "ફોન્ટનું કદ પસંદ કરો",
+      "en": "Select Font Size"
+    },
+    "font_small": {
+      "hi": "छोटा (Small)",
+      "gu": "નાનું (Small)",
+      "en": "Small"
+    },
+    "font_medium": {
+      "hi": "मध्यम (Medium)",
+      "gu": "મધ્યમ (Medium)",
+      "en": "Medium"
+    },
+    "font_large": {
+      "hi": "बड़ा (Large)",
+      "gu": "મોટું (Large)",
+      "en": "Large"
+    },
+    "audio_playing_recorded": {
+      "hi": "ऑडियो चल रहा है",
+      "gu": "ઓડિયો ચાલી રહ્યો છે",
+      "en": "Playing Recorded Audio"
+    },
+    "audio_playing_tts": {
+      "hi": "टेक्स्ट-टू-स्पीच (TTS) सक्रिय",
+      "gu": "ટેક્સ્ટ-ટુ-સ્પીચ (TTS) સક્રિય",
+      "en": "Playing via Text-to-Speech"
+    },
+    "bookmark_added": {
+      "hi": "बुकमार्क में जोड़ा गया",
+      "gu": "બુકમાર્કમાં ઉમેરાયું",
+      "en": "Added to Bookmarks"
+    },
+    "bookmark_removed": {
+      "hi": "बुकमार्क से हटाया गया",
+      "gu": "બુકમાર્કમાંથી દૂર કરાયું",
+      "en": "Removed from Bookmarks"
+    },
+    "empty_bookmarks": {
+      "hi": "अभी तक कोई अध्याय बुकमार्क नहीं किया गया है।",
+      "gu": "હજુ સુધી કોઈ પ્રકરણ બુકમાર્ક કરવામાં આવ્યું નથી.",
+      "en": "No chapters bookmarked yet."
+    },
+    "feedback_cta": {
+      "hi": "अपना सुझाव दें (Feedback)",
+      "gu": "તમારો અભિપ્રાય આપો (Feedback)",
+      "en": "Submit Feedback"
+    },
+    "double_tap_exit": {
+      "hi": "ऐप से बाहर निकलने के लिए फिर से बैक दबाएं",
+      "gu": "એપમાંથી બહાર નીકળવા માટે ફરી પાછા દબાવો",
+      "en": "Press back again to exit"
+    }
+  }

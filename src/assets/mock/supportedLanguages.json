@@ -1,0 +1,27 @@
+[
+    {
+      "code": "hi",
+      "name": "हिन्दी",
+      "ttsLocale": "hi-IN",
+      "isEnabled": true
+    },
+    {
+      "code": "gu",
+      "name": "ગુજરાતી",
+      "ttsLocale": "gu-IN",
+      "isEnabled": true
+    },
+    {
+      "code": "mr",
+      "name": "मराठी",
+      "ttsLocale": "mr-IN",
+      "isEnabled": false
+    },
+    {
+      "code": "en",
+      "name": "English",
+      "ttsLocale": "en-IN",
+      "isEnabled": true
+    }
+  ]
+  
