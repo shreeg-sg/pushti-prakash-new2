@@ -37,7 +37,7 @@ on:
 jobs:
   build-client-ios:
     name: Build iOS Package for ${{ inputs.client_key }}
-    runs-on: macos-14 # Uses Apple Silicon (M1/M2) runner on GitHub Actions
+    runs-on: macos-14
 
     steps:
       - name: Checkout Repository
@@ -52,7 +52,6 @@ jobs:
       - name: Install Dependencies
         run: |
           npm ci
-          # Ensure Capacitor iOS package is installed
           npm install @capacitor/ios@^6.0.0 --save-dev
 
       - name: Inject Client Config URL & Version into environment.prod.ts
@@ -93,7 +92,6 @@ jobs:
             /usr/libexec/PlistBuddy -c "Set :CFBundleName ${APP_NAME}" "$PLIST_PATH" || true
           fi
 
-      # Dynamically fetch client logo and stamp iOS AppIcon catalog
       - name: Stamp iOS App Icon from Client Logo
         run: |
           mkdir -p /tmp
@@ -109,7 +107,6 @@ jobs:
             ICON_DIR="ios/App/App/Assets.xcassets/AppIcon.appiconset"
             mkdir -p "$ICON_DIR"
             
-            # Universal App Store & iOS 1024x1024 App Icon
             sips -z 1024 1024 /tmp/logo.png --out "$ICON_DIR/AppIcon-512@2x.png" || true
             sips -z 180 180 /tmp/logo.png --out "$ICON_DIR/AppIcon-60@3x.png" || true
             sips -z 120 120 /tmp/logo.png --out "$ICON_DIR/AppIcon-60@2x.png" || true
@@ -117,33 +114,13 @@ jobs:
             sips -z 152 152 /tmp/logo.png --out "$ICON_DIR/AppIcon-76@2x.png" || true
             sips -z 76 76 /tmp/logo.png --out "$ICON_DIR/AppIcon-76@1x.png" || true
 
-            cat << 'EOF' > "$ICON_DIR/Contents.json"
-{
-  "images": [
-    {
-      "idiom": "universal",
-      "platform": "ios",
-      "size": "1024x1024"
-    },
-    {
-      "idiom": "universal",
-      "platform": "ios",
-      "size": "1024x1024",
-      "filename": "AppIcon-512@2x.png"
-    }
-  ],
-  "info": {
-    "author": "xcode",
-    "version": 1
-  }
-}
-EOF
+            echo '{"images":[{"idiom":"universal","platform":"ios","size":"1024x1024"},{"idiom":"universal","platform":"ios","size":"1024x1024","filename":"AppIcon-512@2x.png"}],"info":{"author":"xcode","version":1}}' > "$ICON_DIR/Contents.json"
             echo "Successfully generated iOS AppIcon catalog!"
           else
             echo "Warning: Logo PNG not found, default icon retained."
           fi
 
-      - name: Build iOS Archive (.xcarchive) with Xcode
+      - name: Build iOS Archive with Xcode
         working-directory: ./ios/App
         run: |
           xcodebuild clean archive \
