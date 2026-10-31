@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       client_key:
-        description: 'Unique Client Slug (e.g., pushtiprakash, another-reader)'
+        description: 'Unique Client Slug (e.g., pushtiprakash)'
         required: true
         default: 'pushtiprakash'
         type: string
@@ -19,9 +19,9 @@ on:
         default: 'com.sameergujarathi.pushtiprakash'
         type: string
       firebase_config_url:
-        description: 'Remote Firebase JSON Config URL for this Client'
+        description: 'Remote Config URL for this Client'
         required: true
-        default: 'https://pushtiprakash-prod-default-rtdb.asia-southeast1.firebasedatabase.app/app_config.json'
+        default: 'https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets/mock/data.json'
         type: string
       build_version:
         description: 'Semantic App Version (e.g., 1.0.0)'
@@ -44,17 +44,17 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # JDK Setup (cache: 'gradle' removed because android/ is generated dynamically below)
       - name: Set up JDK 17 for Capacitor Android
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
       - name: Install NPM Dependencies
         run: npm ci
 
-      - name: Inject Client Firebase URL & Version into environment.prod.ts
+      - name: Inject Client Config URL & Version into environment.prod.ts
         env:
           CLIENT_KEY: ${{ inputs.client_key }}
           FIREBASE_URL: ${{ inputs.firebase_config_url }}
@@ -71,10 +71,6 @@ jobs:
           APP_NAME: ${{ inputs.app_name }}
         run: |
           npx json -I -f capacitor.config.json -e "this.appId='${APP_ID}'; this.appName='${APP_NAME}';" || true
-          if [ -f "android/app/src/main/res/values/strings.xml" ]; then
-            sed -i "s|<string name=\"app_name\">.*</string>|<string name=\"app_name\">${APP_NAME}</string>|g" android/app/src/main/res/values/strings.xml
-            sed -i "s|<string name=\"title_activity_main\">.*</string>|<string name=\"title_activity_main\">${APP_NAME}</string>|g" android/app/src/main/res/values/strings.xml
-          fi
 
       - name: Build Angular Production Web Bundle
         run: npm run build -- --configuration=production
@@ -85,6 +81,10 @@ jobs:
             npx cap add android
           fi
           npx cap sync android
+          if [ -f "android/app/src/main/res/values/strings.xml" ]; then
+            sed -i "s|<string name=\"app_name\">.*</string>|<string name=\"app_name\">${{ inputs.app_name }}</string>|g" android/app/src/main/res/values/strings.xml
+            sed -i "s|<string name=\"title_activity_main\">.*</string>|<string name=\"title_activity_main\">${{ inputs.app_name }}</string>|g" android/app/src/main/res/values/strings.xml
+          fi
 
       - name: Build Android APK (Debug / Unsigned Release)
         working-directory: ./android
@@ -96,7 +96,7 @@ jobs:
         run: |
           mkdir -p dist-apk
           cp android/app/build/outputs/apk/debug/app-debug.apk \
-             "dist-apk/${{ inputs.client_key }}-v${{ inputs.build_version }}.apk"
+            "dist-apk/${{ inputs.client_key }}-v${{ inputs.build_version }}.apk"
 
       - name: Upload Client APK Artifact
         uses: actions/upload-artifact@v4
