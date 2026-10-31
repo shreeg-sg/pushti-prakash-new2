@@ -37,7 +37,7 @@ on:
 jobs:
   build-client-ios:
     name: Build iOS Package for ${{ inputs.client_key }}
-    runs-on: macos-14
+    runs-on: macos-latest
 
     steps:
       - name: Checkout Repository
