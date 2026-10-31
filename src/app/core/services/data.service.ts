@@ -24,6 +24,7 @@ export interface SyncResult {
   message: string;
   statusCode?: number;
   data?: AppConfigPayload;
+  isUpdated?: boolean;
 }
 
 @Injectable({
@@ -36,12 +37,14 @@ export class DataService implements OnDestroy {
   private storageService = inject(StorageService);
   private notificationService = inject(NotificationService);
 
-  private readonly CACHE_KEY = `app_config_cache_${environment.clientKey}`;
+  private readonly CACHE_KEY = `app_manifest_${environment.clientKey}`;
+  private readonly LAST_DAILY_SYNC_KEY = `app_last_daily_sync_${environment.clientKey}`;
 
   private configSubject = new BehaviorSubject<AppConfigPayload | null>(null);
   private isSyncingSubject = new BehaviorSubject<boolean>(false);
   private appStateListener?: PluginListenerHandle;
 
+  // Public Reactive Streams
   public readonly config$: Observable<AppConfigPayload> = this.configSubject.asObservable().pipe(
     filter((cfg): cfg is AppConfigPayload => cfg !== null)
   );
@@ -95,27 +98,76 @@ export class DataService implements OnDestroy {
 
   constructor() {}
 
+  /**
+   * REQUIREMENT 3: Pure TypeScript Once-Daily Update on App Open
+   * (Zero Java dependencies, Zero Web Workers)
+   * 1. Loads cached content from local storage instantly for 0ms startup.
+   * 2. Checks if content was already updated today (YYYY-MM-DD).
+   * 3. If first open today: fetches fresh data, updates local storage, stamps today's date.
+   * 4. If already updated today: skips remote network request.
+   */
   public async initialize(): Promise<void> {
+    // 1. Instantly load local cache
     const cachedConfig = await this.loadCachedConfig();
     if (cachedConfig) {
       this.applyAndPublishConfig(cachedConfig);
+    } else {
+      await this.ensureFallbackLoaded();
     }
 
-    await this.syncWithRemote(true);
+    // 2. Daily once update check
+    await this.syncIfDueToday();
 
+    // 3. Re-check if user keeps app open across midnight and resumes next day
     this.appStateListener = await App.addListener('appStateChange', async (state: AppState) => {
       if (state.isActive) {
         this.ngZone.run(async () => {
-          console.log('[DataService] App resumed. Refreshing data from repo...');
-          await this.syncWithRemote(true);
+          await this.syncIfDueToday();
         });
       }
     });
   }
 
   /**
-   * Universal Hot-Update Synchronizer (CORS-Safe Simple Request):
-   * No custom headers are sent so raw.githubusercontent.com never triggers an OPTIONS preflight.
+   * Once-Daily Sync Gatekeeper with Manual Cache-Clear Recovery:
+   * 1. Checks if local cached data is present. If cache was cleared manually, it FORCES a fresh online fetch immediately.
+   * 2. If cache is present and already updated today, skips the network request.
+   * 3. If first open today (or next day), fetches fresh updates from server.
+   */
+  public async syncIfDueToday(force = false): Promise<SyncResult> {
+    const today = new Date().toISOString().split('T')[0];
+    const { value: lastSyncDate } = await Preferences.get({ key: this.LAST_DAILY_SYNC_KEY });
+    const { value: cachedData } = await Preferences.get({ key: this.CACHE_KEY });
+
+    const hasValidLocalCache = !!cachedData;
+
+    // Only skip network if cache exists AND was already updated today
+    if (!force && hasValidLocalCache && lastSyncDate === today) {
+      console.log(`[DataService] App already updated today (${today}) with local cache intact. Skipping network call.`);
+      return { success: true, message: 'Already updated today', isUpdated: false };
+    }
+
+    console.log(`[DataService] Online sync triggered (Has Cache: ${hasValidLocalCache}, Last Sync: ${lastSyncDate || 'none'}, Today: ${today}). Fetching from server...`);
+    const result = await this.syncWithRemote();
+    if (result.success) {
+      await Preferences.set({ key: this.LAST_DAILY_SYNC_KEY, value: today });
+    }
+    return result;
+  }
+
+  /**
+   * Manual Cache Clearance & Instant Online Sync:
+   * Clears all local storage and immediately downloads fresh data from the online server.
+   */
+  public async clearCacheAndSync(): Promise<SyncResult> {
+    console.log('[DataService] Manual cache clearance triggered. Wiping local storage and updating from online server...');
+    await Preferences.remove({ key: this.CACHE_KEY });
+    await Preferences.remove({ key: this.LAST_DAILY_SYNC_KEY });
+    return this.syncWithRemote(true);
+  }
+
+  /**
+   * Simple CORS GET Request with Query Timestamp Cache-Busting:
    */
   public async syncWithRemote(hardClearCache = false): Promise<SyncResult> {
     this.isSyncingSubject.next(true);
@@ -132,13 +184,12 @@ export class DataService implements OnDestroy {
     console.log('[DataService] Fetching from repo:', requestUrl);
 
     try {
-      // Simple GET request: No custom headers -> No OPTIONS preflight -> No CORS blocking
       const remoteConfig = await firstValueFrom(
         this.http.get<AppConfigPayload>(requestUrl)
       );
 
       if (remoteConfig && remoteConfig.app_identity && Array.isArray(remoteConfig.books)) {
-        console.log('[DataService] Fresh data received from repo successfully! Schema version:', remoteConfig.schemaVersion);
+        console.log('[DataService] Fresh data received successfully! Schema version:', remoteConfig.schemaVersion);
 
         if (hardClearCache) {
           await Preferences.remove({ key: this.CACHE_KEY });
@@ -156,33 +207,18 @@ export class DataService implements OnDestroy {
         this.isSyncingSubject.next(false);
         return {
           success: true,
-          message: 'Updated to latest configuration from GitHub',
+          message: 'Updated to latest configuration',
           statusCode: 200,
-          data: remoteConfig
+          data: remoteConfig,
+          isUpdated: true
         };
       }
 
       throw new Error('Received JSON is missing app_identity or books array.');
     } catch (error: any) {
       this.isSyncingSubject.next(false);
-      const status = error?.status;
-      let userMsg = `Failed to fetch data.json (Status: ${status || 'Network Error'})`;
-
-      if (status === 404) {
-        userMsg = 'HTTP 404: File not found on GitHub. Check if repo is PUBLIC and branch is correct.';
-        console.error('[DataService] HTTP 404: The URL was not found:', requestUrl);
-      } else if (status === 0) {
-        userMsg = 'Network Error / CORS Blocked.';
-        console.error('[DataService] Network Error (Status 0):', error);
-      } else {
-        console.error('[DataService] Remote sync error:', error);
-      }
-
-      if (!this.configSubject.value) {
-        await this.loadAndApplyExistingCache();
-      }
-
-      return { success: false, message: userMsg, statusCode: status };
+      console.warn('[DataService] Remote sync failed, continuing with cached content:', error?.message);
+      return { success: false, message: 'Using offline cached content', statusCode: error?.status };
     }
   }
 
@@ -190,22 +226,10 @@ export class DataService implements OnDestroy {
     return this.syncWithRemote(true);
   }
 
-  public async loadAndApplyExistingCache(): Promise<void> {
-    const cachedConfig = await this.loadCachedConfig();
-    if (cachedConfig) {
-      this.ngZone.run(() => {
-        this.applyAndPublishConfig(cachedConfig);
-      });
-      return;
-    }
-    await this.ensureFallbackLoaded();
-  }
-
   public resolveMediaUrl(urlOrPath: string | undefined): string {
     if (!urlOrPath) return '';
     let clean = urlOrPath.trim();
 
-    // Auto-convert browser GitHub blob URLs to raw.githubusercontent.com
     if (clean.includes('github.com/') && clean.includes('/blob/')) {
       clean = clean
         .replace(/^https?:\/\/github\.com\//, 'https://raw.githubusercontent.com/')
@@ -223,7 +247,6 @@ export class DataService implements OnDestroy {
     let base = baseUrl.replace(/\/+$/, '');
     const sanitizedPath = clean.replace(/^\/+/, '');
 
-    // For audio files, always use raw.githubusercontent.com (jsDelivr blocks media streaming)
     const isAudio = ['.mp3', '.wav', '.m4a', '.ogg', '.aac'].some(ext => sanitizedPath.toLowerCase().endsWith(ext));
     if (isAudio && base.includes('cdn.jsdelivr.net/gh/')) {
       base = base

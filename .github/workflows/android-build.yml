@@ -23,6 +23,11 @@ on:
         required: true
         default: 'https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets/mock/data.json'
         type: string
+      logo_url:
+        description: 'Direct URL to Client Logo PNG (Fallback if local src/assets/images/logo.png not present)'
+        required: false
+        default: 'https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets/images/logo.png'
+        type: string
       build_version:
         description: 'Semantic App Version (e.g., 1.0.0)'
         required: true
@@ -44,7 +49,6 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      # JDK Setup (cache: 'gradle' removed because android/ is generated dynamically below)
       - name: Set up JDK 17 for Capacitor Android
         uses: actions/setup-java@v4
         with:
@@ -65,7 +69,7 @@ jobs:
           sed -i "s|__BUILD_VERSION__|${BUILD_VERSION}|g" src/environments/environment.prod.ts
           cat src/environments/environment.prod.ts
 
-      - name: Stamp Client App ID and Name in Capacitor Config & Android Manifest
+      - name: Stamp Client App ID and Name in Capacitor Config
         env:
           APP_ID: ${{ inputs.app_id }}
           APP_NAME: ${{ inputs.app_name }}
@@ -84,6 +88,34 @@ jobs:
           if [ -f "android/app/src/main/res/values/strings.xml" ]; then
             sed -i "s|<string name=\"app_name\">.*</string>|<string name=\"app_name\">${{ inputs.app_name }}</string>|g" android/app/src/main/res/values/strings.xml
             sed -i "s|<string name=\"title_activity_main\">.*</string>|<string name=\"title_activity_main\">${{ inputs.app_name }}</string>|g" android/app/src/main/res/values/strings.xml
+          fi
+
+      # REQUIREMENT 2: Detect logo from local src/assets/images/logo.png OR remote URL and stamp Android launcher icons
+      - name: Stamp Android Launcher App Icon from Logo Location
+        run: |
+          mkdir -p /tmp
+          if [ -f "src/assets/images/logo.png" ]; then
+            echo "Found logo locally at src/assets/images/logo.png"
+            cp src/assets/images/logo.png /tmp/logo.png
+          elif [ -n "${{ inputs.logo_url }}" ]; then
+            echo "Downloading logo from remote URL ${{ inputs.logo_url }}..."
+            curl -s -L "${{ inputs.logo_url }}" -o /tmp/logo.png || true
+          fi
+
+          if [ -s /tmp/logo.png ]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick || true
+            for res in "mdpi:48" "hdpi:72" "xhdpi:96" "xxhdpi:144" "xxxhdpi:192"; do
+              folder=$(echo $res | cut -d: -f1)
+              size=$(echo $res | cut -d: -f2)
+              dir="android/app/src/main/res/mipmap-${folder}"
+              mkdir -p "$dir"
+              convert /tmp/logo.png -resize "${size}x${size}" "$dir/ic_launcher.png" || true
+              convert /tmp/logo.png -resize "${size}x${size}" "$dir/ic_launcher_round.png" || true
+              convert /tmp/logo.png -resize "${size}x${size}" "$dir/ic_launcher_foreground.png" || true
+            done
+            echo "Successfully generated Android home screen launcher icons!"
+          else
+            echo "Warning: Logo image not found, keeping default icon."
           fi
 
       - name: Build Android APK (Debug / Unsigned Release)
