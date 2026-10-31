@@ -1,0 +1,15 @@
+{
+    "description": {
+      "hi": "पुष्टिप्रकाश एक डिजिटल पठन और श्रवण मंच है जो भक्तों को प्रामाणिक ग्रंथों, स्तोत्रों और वचनामृतों को ऑफ़लाइन पढ़ने और सुनने की सुविधा प्रदान करता है।",
+      "gu": "પુષ્ટિપ્રકાશ એ એક ડિજિટલ વાંચન અને શ્રવણ પ્લેટફોર્મ છે જે ભક્તોને પ્રમાણભૂત ગ્રંથો અને સ્તોત્રો ઓફલાઇન વાંચવા અને સાંભળવાની સુવિધા આપે છે.",
+      "en": "PushtiPrakash is an offline-first digital reading and audio companion providing authentic scriptures, stotras, and discourses across multiple languages."
+    },
+    "contactEmail": "support@pushtiprakash.example.com",
+    "websiteUrl": "https://pushtiprakash.example.com",
+    "feedback_links": {
+      "hi": "https://docs.google.com/forms/d/e/1FAIpQLSc_HINDI_FORM_ID/viewform",
+      "gu": "https://docs.google.com/forms/d/e/1FAIpQLSc_GUJARATI_FORM_ID/viewform",
+      "en": "https://docs.google.com/forms/d/e/1FAIpQLSc_ENGLISH_FORM_ID/viewform"
+    }
+  }
+  

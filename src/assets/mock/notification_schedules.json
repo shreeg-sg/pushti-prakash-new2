@@ -1,0 +1,58 @@
+[
+    {
+      "id": 101,
+      "isEnabled": true,
+      "title": {
+        "hi": "प्रातः स्मरण - पुष्टिप्रकाश",
+        "gu": "પ્રાતઃ સ્મરણ - પુષ્ટિપ્રકાશ",
+        "en": "Morning Reading - PushtiPrakash"
+      },
+      "body": {
+        "hi": "श्री यमुनाष्टकम् का पाठ और श्रवण करने का समय।",
+        "gu": "શ્રી યમુનાષ્ટકમ્ નો પાઠ અને શ્રવણ કરવાનો સમય.",
+        "en": "Start your morning with Shri Yamunashtakam."
+      },
+      "hour": 7,
+      "minute": 30,
+      "repeatsDaily": true,
+      "targetBookId": "book_shodash_granth",
+      "targetChapterId": "ch_yamunashtakam"
+    },
+    {
+      "id": 102,
+      "isEnabled": true,
+      "title": {
+        "hi": "सांध्य पठन अनुस्मारक",
+        "gu": "સાંજનું વાંચન રીમાઇન્ડર",
+        "en": "Evening Reflection Reminder"
+      },
+      "body": {
+        "hi": "आज का अध्याय पढ़ना न भूलें।",
+        "gu": "આજનું પ્રકરણ વાંચવાનું ભૂલશો નહીં.",
+        "en": "Take 5 minutes for your evening chapter reading."
+      },
+      "hour": 19,
+      "minute": 30,
+      "repeatsDaily": true
+    },
+    {
+      "id": 201,
+      "isEnabled": true,
+      "title": {
+        "hi": "प्रबोधिनी एकादशी (तुलसी विवाह)",
+        "gu": "પ્રબોધિની એકાદશી",
+        "en": "Prabodhini Ekadashi"
+      },
+      "body": {
+        "hi": "आज प्रबोधिनी एकादशी का पावन पर्व है। श्री यमुनाष्टकम् का पाठ करें।",
+        "gu": "આજે પ્રબોધિની એકાદશીનો પવિત્ર પર્વ છે.",
+        "en": "Today is Prabodhini Ekadashi. Read Shri Yamunashtakam."
+      },
+      "date": "2026-11-20",
+      "hour": 6,
+      "minute": 0,
+      "targetBookId": "book_shodash_granth",
+      "targetChapterId": "ch_yamunashtakam"
+    }
+  ]
+  

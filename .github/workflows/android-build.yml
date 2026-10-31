@@ -21,7 +21,7 @@ on:
       firebase_config_url:
         description: 'Remote Config URL for this Client'
         required: true
-        default: 'https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets/mock/data.json'
+        default: 'https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets/mock/'
         type: string
       logo_url:
         description: 'Direct URL to Client Logo PNG (Fallback if local src/assets/images/logo.png not present)'
