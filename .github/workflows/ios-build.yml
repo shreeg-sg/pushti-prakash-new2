@@ -1,0 +1,181 @@
+name: White-Label iOS Application Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      client_key:
+        description: 'Unique Client Slug (e.g., pushtiprakash)'
+        required: true
+        default: 'pushtiprakash'
+        type: string
+      app_name:
+        description: 'iOS App Display Name (e.g., PushtiPrakash)'
+        required: true
+        default: 'PushtiPrakash'
+        type: string
+      app_id:
+        description: 'Apple Bundle Identifier (e.g., com.sameergujarathi.pushtiprakash)'
+        required: true
+        default: 'com.sameergujarathi.pushtiprakash'
+        type: string
+      firebase_config_url:
+        description: 'Remote Config URL for this Client'
+        required: true
+        default: 'https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets/mock/'
+        type: string
+      logo_url:
+        description: 'Direct URL to Client Logo PNG (for iOS AppIcon 1024x1024)'
+        required: false
+        default: 'https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets/images/logo.png'
+        type: string
+      build_version:
+        description: 'Semantic App Version (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+        type: string
+
+jobs:
+  build-client-ios:
+    name: Build iOS Package for ${{ inputs.client_key }}
+    runs-on: macos-14 # Uses Apple Silicon (M1/M2) runner on GitHub Actions
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: |
+          npm ci
+          # Ensure Capacitor iOS package is installed
+          npm install @capacitor/ios@^6.0.0 --save-dev
+
+      - name: Inject Client Config URL & Version into environment.prod.ts
+        env:
+          CLIENT_KEY: ${{ inputs.client_key }}
+          FIREBASE_URL: ${{ inputs.firebase_config_url }}
+          BUILD_VERSION: ${{ inputs.build_version }}
+        run: |
+          sed -i '' "s|__CLIENT_KEY__|${CLIENT_KEY}|g" src/environments/environment.prod.ts
+          sed -i '' "s|__FIREBASE_CONFIG_URL__|${FIREBASE_URL}|g" src/environments/environment.prod.ts
+          sed -i '' "s|__BUILD_VERSION__|${BUILD_VERSION}|g" src/environments/environment.prod.ts
+          cat src/environments/environment.prod.ts
+
+      - name: Stamp Client App ID and Name in Capacitor Config
+        env:
+          APP_ID: ${{ inputs.app_id }}
+          APP_NAME: ${{ inputs.app_name }}
+        run: |
+          npx json -I -f capacitor.config.json -e "this.appId='${APP_ID}'; this.appName='${APP_NAME}';" || true
+
+      - name: Build Angular Production Web Bundle
+        run: npm run build -- --configuration=production
+
+      - name: Add and Sync Capacitor iOS Project
+        run: |
+          if [ ! -d "ios" ]; then
+            npx cap add ios
+          fi
+          npx cap sync ios
+
+      - name: Stamp iOS App Name in Info.plist
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+        run: |
+          PLIST_PATH="ios/App/App/Info.plist"
+          if [ -f "$PLIST_PATH" ]; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${APP_NAME}" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${APP_NAME}" "$PLIST_PATH"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleName ${APP_NAME}" "$PLIST_PATH" || true
+          fi
+
+      # Dynamically fetch client logo and stamp iOS AppIcon catalog
+      - name: Stamp iOS App Icon from Client Logo
+        run: |
+          mkdir -p /tmp
+          if [ -f "src/assets/images/logo.png" ]; then
+            echo "Found logo locally at src/assets/images/logo.png"
+            cp src/assets/images/logo.png /tmp/logo.png
+          elif [ -n "${{ inputs.logo_url }}" ]; then
+            echo "Downloading logo from remote URL ${{ inputs.logo_url }}..."
+            curl -s -L "${{ inputs.logo_url }}" -o /tmp/logo.png || true
+          fi
+
+          if [ -s /tmp/logo.png ]; then
+            ICON_DIR="ios/App/App/Assets.xcassets/AppIcon.appiconset"
+            mkdir -p "$ICON_DIR"
+            
+            # Universal App Store & iOS 1024x1024 App Icon
+            sips -z 1024 1024 /tmp/logo.png --out "$ICON_DIR/AppIcon-512@2x.png" || true
+            sips -z 180 180 /tmp/logo.png --out "$ICON_DIR/AppIcon-60@3x.png" || true
+            sips -z 120 120 /tmp/logo.png --out "$ICON_DIR/AppIcon-60@2x.png" || true
+            sips -z 167 167 /tmp/logo.png --out "$ICON_DIR/AppIcon-83.5@2x.png" || true
+            sips -z 152 152 /tmp/logo.png --out "$ICON_DIR/AppIcon-76@2x.png" || true
+            sips -z 76 76 /tmp/logo.png --out "$ICON_DIR/AppIcon-76@1x.png" || true
+
+            cat << 'EOF' > "$ICON_DIR/Contents.json"
+{
+  "images": [
+    {
+      "idiom": "universal",
+      "platform": "ios",
+      "size": "1024x1024"
+    },
+    {
+      "idiom": "universal",
+      "platform": "ios",
+      "size": "1024x1024",
+      "filename": "AppIcon-512@2x.png"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}
+EOF
+            echo "Successfully generated iOS AppIcon catalog!"
+          else
+            echo "Warning: Logo PNG not found, default icon retained."
+          fi
+
+      - name: Build iOS Archive (.xcarchive) with Xcode
+        working-directory: ./ios/App
+        run: |
+          xcodebuild clean archive \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -archivePath build/App.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Export iOS IPA Package
+        working-directory: ./ios/App
+        run: |
+          mkdir -p build/Payload
+          cp -r build/App.xcarchive/Products/Applications/App.app build/Payload/
+          cd build
+          zip -r "${{ inputs.client_key }}-v${{ inputs.build_version }}.ipa" Payload/
+          cd ../../..
+          mkdir -p dist-ios
+          cp ios/App/build/${{ inputs.client_key }}-v${{ inputs.build_version }}.ipa dist-ios/
+
+      - name: Zip Complete iOS Xcode Archive
+        run: |
+          cd ios/App/build
+          zip -r App.xcarchive.zip App.xcarchive/
+          cd ../../..
+          cp ios/App/build/App.xcarchive.zip dist-ios/
+
+      - name: Upload iOS Application IPA & Archive Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.client_key }}-v${{ inputs.build_version }}-ios-bundle
+          path: dist-ios/
+          retention-days: 30
