@@ -90,7 +90,7 @@ jobs:
             sed -i "s|<string name=\"title_activity_main\">.*</string>|<string name=\"title_activity_main\">${{ inputs.app_name }}</string>|g" android/app/src/main/res/values/strings.xml
           fi
 
-      # REQUIREMENT 2: Detect logo from local src/assets/images/logo.png OR remote URL and stamp Android launcher icons
+      # Detects logo and scales round logos into Android's 72% safe-zone to prevent cropping
       - name: Stamp Android Launcher App Icon from Logo Location
         run: |
           mkdir -p /tmp
@@ -109,11 +109,16 @@ jobs:
               size=$(echo $res | cut -d: -f2)
               dir="android/app/src/main/res/mipmap-${folder}"
               mkdir -p "$dir"
+              
+              # Standard and legacy round icons
               convert /tmp/logo.png -resize "${size}x${size}" "$dir/ic_launcher.png" || true
               convert /tmp/logo.png -resize "${size}x${size}" "$dir/ic_launcher_round.png" || true
-              convert /tmp/logo.png -resize "${size}x${size}" "$dir/ic_launcher_foreground.png" || true
+              
+              # Adaptive icon foreground scaled to 72% with transparent margins so circle edges never clip
+              fg_size=$(( size * 72 / 100 ))
+              convert /tmp/logo.png -resize "${fg_size}x${fg_size}" -gravity center -background none -extent "${size}x${size}" "$dir/ic_launcher_foreground.png" || true
             done
-            echo "Successfully generated Android home screen launcher icons!"
+            echo "Successfully generated Android home screen launcher icons with safe-zone padding!"
           else
             echo "Warning: Logo image not found, keeping default icon."
           fi
