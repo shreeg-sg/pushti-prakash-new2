@@ -7,17 +7,11 @@ import {
   IonCardTitle,
   IonCardContent,
   IonButton,
-  IonIcon,
-  IonItem,
-  IonLabel
+  IonIcon
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
-import {
-  chatboxEllipsesOutline,
-  mailOutline,
-  globeOutline
-} from 'ionicons/icons';
-import { Observable, combineLatest } from 'rxjs';
+import { chatboxEllipsesOutline, mailOutline, globeOutline } from 'ionicons/icons';
+import { combineLatest } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { HeaderComponent } from '../../layout/header.component';
@@ -36,9 +30,7 @@ import { StorageService } from '../../core/services/storage.service';
     IonCardTitle,
     IonCardContent,
     IonButton,
-    IonIcon,
-    IonItem,
-    IonLabel
+    IonIcon
   ],
   template: `
     <app-header></app-header>
@@ -54,31 +46,33 @@ import { StorageService } from '../../core/services/storage.service';
             <ion-card-title class="about-title">{{ vm.appName }}</ion-card-title>
           </ion-card-header>
 
-          <ion-card-content>
+          <ion-card-content class="about-content">
             <p class="about-description">{{ vm.description }}</p>
 
+            <!-- Centered Contact Links -->
             <div class="contact-links" *ngIf="vm.contactEmail || vm.websiteUrl">
-              <ion-item lines="none" *ngIf="vm.contactEmail" [href]="'mailto:' + vm.contactEmail">
-                <ion-icon slot="start" name="mail-outline" color="primary"></ion-icon>
-                <ion-label>{{ vm.contactEmail }}</ion-label>
-              </ion-item>
+              <a *ngIf="vm.contactEmail" [href]="'mailto:' + vm.contactEmail" class="contact-pill-link">
+                <ion-icon name="mail-outline"></ion-icon>
+                <span>{{ vm.contactEmail }}</span>
+              </a>
 
-              <ion-item lines="none" *ngIf="vm.websiteUrl" [href]="vm.websiteUrl" target="_blank">
-                <ion-icon slot="start" name="globe-outline" color="primary"></ion-icon>
-                <ion-label>{{ vm.websiteUrl }}</ion-label>
-              </ion-item>
+              <a *ngIf="vm.websiteUrl" [href]="vm.websiteUrl" target="_blank" rel="noopener noreferrer" class="contact-pill-link">
+                <ion-icon name="globe-outline"></ion-icon>
+                <span>{{ vm.websiteUrl }}</span>
+              </a>
             </div>
 
-            <!-- Language-Mapped Google Form Feedback CTA -->
-            <ion-button
-              *ngIf="vm.feedbackUrl"
-              expand="block"
-              color="primary"
-              class="ion-margin-top feedback-btn"
-              (click)="openFeedbackForm(vm.feedbackUrl)">
-              <ion-icon slot="start" name="chatbox-ellipses-outline"></ion-icon>
-              {{ vm.feedbackButtonLabel }}
-            </ion-button>
+            <!-- Centered Feedback CTA -->
+            <div class="feedback-cta-wrapper" *ngIf="vm.feedbackUrl">
+              <ion-button
+                expand="block"
+                color="primary"
+                class="feedback-btn"
+                (click)="openFeedbackForm(vm.feedbackUrl)">
+                <ion-icon slot="start" name="chatbox-ellipses-outline"></ion-icon>
+                {{ vm.feedbackButtonLabel }}
+              </ion-button>
+            </div>
           </ion-card-content>
         </ion-card>
       </div>
@@ -91,31 +85,64 @@ import { StorageService } from '../../core/services/storage.service';
     }
     .about-card {
       border-radius: 18px;
-      padding: 16px 8px;
+      padding: 20px 12px;
+      text-align: center;
     }
     .about-logo-box {
       display: flex;
       justify-content: center;
-      margin-top: 12px;
+      margin-top: 10px;
     }
     .about-logo {
-      width: 84px;
-      height: 84px;
-      border-radius: 18px;
+      width: 88px;
+      height: 88px;
+      border-radius: 20px;
       object-fit: contain;
     }
     .about-title {
-      font-size: 1.35rem;
+      font-size: 1.4rem;
       font-weight: 800;
       color: var(--ion-color-primary);
+      text-align: center !important;
     }
     .about-description {
+      text-align: center !important;
       font-size: var(--app-reader-font-size, 1.05rem);
-      line-height: var(--app-reader-line-height, 1.65);
-      margin: 12px 0 20px;
+      line-height: var(--app-reader-line-height, 1.6);
+      margin: 12px auto 20px;
       white-space: pre-line;
+      max-width: 560px;
+    }
+    .contact-links {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin: 18px auto;
+    }
+    .contact-pill-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: 20px;
+      background: rgba(var(--ion-color-primary-rgb), 0.08);
+      color: var(--ion-color-primary);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: background 0.2s ease;
+    }
+    .feedback-cta-wrapper {
+      display: flex;
+      justify-content: center;
+      margin-top: 24px;
     }
     .feedback-btn {
+      max-width: 320px;
+      width: 100%;
       --border-radius: 12px;
       font-weight: 700;
     }

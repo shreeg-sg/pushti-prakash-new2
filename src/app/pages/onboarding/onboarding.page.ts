@@ -14,7 +14,9 @@ import {
 import { addIcons } from 'ionicons';
 import { checkmarkCircle, arrowForwardOutline, globeOutline } from 'ionicons/icons';
 import { Observable } from 'rxjs';
+import { Preferences } from '@capacitor/preferences';
 
+import { environment } from '../../../environments/environment';
 import { DataService } from '../../core/services/data.service';
 import { StorageService } from '../../core/services/storage.service';
 import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.model';
@@ -36,25 +38,26 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
   template: `
     <ion-content class="ion-padding onboarding-bg">
       <div class="onboarding-wrapper" *ngIf="identity$ | async as identity">
-        <!-- Client Brand Card & Welcome Message -->
         <ion-card class="onboarding-card">
+          <!-- Logo Display -->
           <div class="logo-stage" *ngIf="identity.logoUrl">
             <img [src]="dataService.resolveMediaUrl(identity.logoUrl)" alt="App Logo" class="welcome-logo" />
           </div>
 
-          <ion-card-header class="ion-text-center">
+          <!-- Welcome Header (Center Aligned) -->
+          <ion-card-header class="welcome-header">
             <ion-card-title class="welcome-heading">
               {{ (uiText$ | async)?.['welcome_title'] || localize(identity.appName) || identity.defaultAppName }}
             </ion-card-title>
             <ion-card-subtitle class="welcome-subtitle">
               <ion-icon name="globe-outline"></ion-icon>
-              {{ (uiText$ | async)?.['select_language_prompt'] || 'Please select your preferred language' }}
+              <span>{{ (uiText$ | async)?.['select_language_prompt'] || 'Please select your preferred language' }}</span>
             </ion-card-subtitle>
           </ion-card-header>
 
           <ion-card-content>
-            <!-- Language Selection Grid -->
-            <div class="language-grid" *ngIf="enabledLanguages$ | async as languages">
+            <!-- Single-Column Center-Aligned Language List -->
+            <div class="language-column" *ngIf="enabledLanguages$ | async as languages">
               <button
                 type="button"
                 *ngFor="let lang of languages"
@@ -70,7 +73,7 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
               </button>
             </div>
 
-            <!-- Continue to Dashboard CTA -->
+            <!-- Continue Button -->
             <ion-button
               expand="block"
               size="large"
@@ -97,8 +100,9 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
       width: 100%;
       max-width: 440px;
       border-radius: 20px;
-      padding: 16px 8px;
+      padding: 16px 12px;
       box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+      text-align: center;
     }
     .logo-stage {
       display: flex;
@@ -114,11 +118,16 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
       padding: 8px;
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
     }
+    .welcome-header {
+      text-align: center !important;
+      padding-bottom: 8px;
+    }
     .welcome-heading {
-      font-size: 1.4rem;
+      font-size: 1.35rem;
       font-weight: 700;
       margin-top: 8px;
       color: var(--ion-color-primary);
+      text-align: center !important;
     }
     .welcome-subtitle {
       display: flex;
@@ -127,23 +136,30 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
       gap: 6px;
       margin-top: 8px;
       font-size: 0.95rem;
+      text-align: center !important;
     }
-    .language-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+    /* Single-Column Language Selection */
+    .language-column {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
       gap: 12px;
-      margin: 20px 0;
+      margin: 20px auto;
+      max-width: 320px;
+      width: 100%;
     }
     .lang-option-btn {
+      width: 100%;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 14px 16px;
+      justify-content: center;
+      position: relative;
+      padding: 14px 20px;
       border-radius: 12px;
       border: 2px solid rgba(var(--ion-color-primary-rgb), 0.2);
       background: var(--ion-background-color, #ffffff);
       color: var(--ion-text-color, #2c1810);
-      font-size: 1rem;
+      font-size: 1.05rem;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.18s ease;
@@ -152,12 +168,17 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
       border-color: var(--ion-color-primary);
       background: rgba(var(--ion-color-primary-rgb), 0.1);
       color: var(--ion-color-primary);
+      font-weight: 700;
     }
     .check-icon {
-      font-size: 1.25rem;
+      position: absolute;
+      right: 16px;
+      font-size: 1.35rem;
       color: var(--ion-color-primary);
     }
     .continue-btn {
+      max-width: 320px;
+      margin: 16px auto 0;
       --border-radius: 12px;
       font-weight: 700;
     }
@@ -178,19 +199,27 @@ export class OnboardingPage implements OnInit {
     addIcons({ checkmarkCircle, arrowForwardOutline, globeOutline });
   }
 
-  ngOnInit(): void {
+  async ngOnInit(): Promise<void> {
+    // Bypass onboarding if language is already stored in cache
+    const langKey = `wl_${environment.clientKey}_selected_language`;
+    const { value: cachedLang } = await Preferences.get({ key: langKey });
+
+    if (cachedLang || this.storageService.hasCompletedOnboardingSnapshot()) {
+      this.router.navigate(['/dashboard'], { replaceUrl: true });
+      return;
+    }
+
     this.selectedLang = this.storageService.getCurrentLanguageSnapshot() || 'hi';
   }
 
-  public async onSelectLanguage(langCode: string): Promise<void> {
-    this.selectedLang = langCode;
-    // Preview UI strings immediately in the chosen language
-    await this.storageService.setLanguage(langCode);
+  public onSelectLanguage(code: string): void {
+    this.selectedLang = code;
   }
 
   public async onContinue(): Promise<void> {
+    if (!this.selectedLang) return;
     await this.storageService.completeOnboarding(this.selectedLang);
-    await this.router.navigate(['/dashboard'], { replaceUrl: true });
+    this.router.navigate(['/dashboard'], { replaceUrl: true });
   }
 
   public localize(mapObj: Record<string, string> | undefined): string {
