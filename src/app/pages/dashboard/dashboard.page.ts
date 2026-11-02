@@ -48,13 +48,19 @@ import { Book } from '../../core/models/app-config.model';
   template: `
     <app-header [showBackButton]="false"></app-header>
 
-    <!-- Sticky Notification Banner (Supports HTML: <br>, <b>, <i>, font sizes) -->
-    <div class="sticky-notification-banner" *ngIf="(updateBanner$ | async) as bannerText">
+    <!-- Sticky Notification Banner (Max 25vh height, hides on scroll down when books are present) -->
+    <div
+      class="sticky-notification-banner"
+      *ngIf="(updateBanner$ | async) as bannerText"
+      [class.banner-hidden]="isBannerHidden">
       <ion-icon name="sparkles-outline" class="banner-icon"></ion-icon>
       <span class="banner-text" [innerHTML]="bannerText"></span>
     </div>
 
-    <ion-content class="ion-padding dashboard-content">
+    <ion-content
+      [scrollEvents]="true"
+      (ionScroll)="onDashboardScroll($event)"
+      class="ion-padding dashboard-content">
       <!-- Direct Watermark Binding (15% opacity behind book cards) -->
       <div
         class="watermark-overlay"
@@ -112,7 +118,7 @@ import { Book } from '../../core/models/app-config.model';
       top: 0;
       z-index: 50;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 10px;
       background: rgba(var(--ion-color-secondary-rgb), 0.22);
       border-bottom: 2px solid var(--ion-color-primary);
@@ -121,26 +127,54 @@ import { Book } from '../../core/models/app-config.model';
       font-weight: 500;
       font-size: 0.92rem;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+
+      /* Requirement: Never exceed 25% of viewport height */
+      max-height: 25vh;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+
+      /* Smooth transition when hiding on scroll */
+      transition: transform 0.28s ease, opacity 0.28s ease, max-height 0.28s ease, padding 0.28s ease;
+      transform: translateY(0);
+      opacity: 1;
     }
+
+    /* Hidden state triggered on scroll down */
+    .sticky-notification-banner.banner-hidden {
+      transform: translateY(-100%);
+      max-height: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+      opacity: 0;
+      pointer-events: none;
+      border-bottom-width: 0;
+    }
+
     .banner-icon {
       font-size: 1.3rem;
       color: var(--ion-color-primary);
       flex-shrink: 0;
+      margin-top: 2px;
     }
+
     .banner-text {
       flex: 1;
       line-height: 1.45;
-      white-space: pre-line; /* Renders literal \\n and HTML <br> cleanly */
+      white-space: pre-line;
     }
+
     .banner-text b, .banner-text strong {
       font-weight: 700;
     }
+
     .banner-text i, .banner-text em {
       font-style: italic;
     }
+
     .dashboard-content {
       position: relative;
     }
+
     .watermark-overlay {
       position: fixed;
       top: 50%;
@@ -155,10 +189,12 @@ import { Book } from '../../core/models/app-config.model';
       pointer-events: none;
       z-index: 0;
     }
+
     .books-grid {
       position: relative;
       z-index: 1;
     }
+
     .book-card {
       border-radius: 16px;
       overflow: hidden;
@@ -173,17 +209,20 @@ import { Book } from '../../core/models/app-config.model';
         box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
       }
     }
+
     .book-cover-wrapper {
       position: relative;
       height: 190px;
       background: rgba(var(--ion-color-primary-rgb), 0.08);
       overflow: hidden;
     }
+
     .book-cover-img {
       width: 100%;
       height: 100%;
       object-fit: cover;
     }
+
     .chapter-count-badge {
       position: absolute;
       bottom: 10px;
@@ -198,22 +237,26 @@ import { Book } from '../../core/models/app-config.model';
       align-items: center;
       gap: 4px;
     }
+
     .title-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
     }
+
     .book-card-title {
       font-size: 1.15rem;
       font-weight: 700;
       flex: 1;
     }
+
     .action-arrow {
       font-size: 1.2rem;
       color: var(--ion-color-primary);
       flex-shrink: 0;
     }
+
     .book-card-subtitle {
       margin-top: 4px;
       font-size: 0.86rem;
@@ -230,6 +273,9 @@ export class DashboardPage implements OnInit {
   public watermarkUrl$: Observable<string> = this.dataService.watermarkUrl$;
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
 
+  public isBannerHidden = false;
+  private lastScrollTop = 0;
+  private hasBooks = false;
   private currentLang = 'hi';
 
   constructor() {
@@ -244,6 +290,37 @@ export class DashboardPage implements OnInit {
     this.storageService.selectedLanguage$.subscribe(lang => {
       this.currentLang = lang;
     });
+
+    // Track if books are present
+    this.visibleBooks$.subscribe(books => {
+      this.hasBooks = !!(books && books.length > 0);
+      if (!this.hasBooks) {
+        this.isBannerHidden = false;
+      }
+    });
+  }
+
+  public onDashboardScroll(event: CustomEvent): void {
+    // Only auto-hide if books are available to scroll through
+    if (!this.hasBooks) {
+      this.isBannerHidden = false;
+      return;
+    }
+
+    const currentScrollTop = event.detail.scrollTop;
+
+    // At the top of the page, always show banner
+    if (currentScrollTop <= 15) {
+      this.isBannerHidden = false;
+    } else if (currentScrollTop > this.lastScrollTop + 10 && currentScrollTop > 40) {
+      // Scrolling DOWN: hide banner
+      this.isBannerHidden = true;
+    } else if (currentScrollTop < this.lastScrollTop - 10) {
+      // Scrolling UP: reveal banner
+      this.isBannerHidden = false;
+    }
+
+    this.lastScrollTop = currentScrollTop;
   }
 
   public async onPullRefresh(event: CustomEvent): Promise<void> {

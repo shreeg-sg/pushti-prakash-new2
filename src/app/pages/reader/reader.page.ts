@@ -103,10 +103,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
           Prev
         </ion-button>
 
-        <span class="stepper-title-indicator" *ngIf="activeChapter">
-          {{ activeChapterTitle }}
-        </span>
-
         <ion-button
           fill="solid"
           size="small"
@@ -528,7 +524,8 @@ export class ReaderPage implements OnInit, OnDestroy {
           ttsLocale,
           audioUrl: resolvedAudioUrl,
           transcript: rawTranscript
-        });
+        }, this.shouldAutoPlayNext);
+        this.shouldAutoPlayNext = false;
       });
   }
 
@@ -574,8 +571,15 @@ export class ReaderPage implements OnInit, OnDestroy {
     return paragraph.includes(state.activeChunkText);
   }
 
-  public goToSiblingChapter(targetChapterId?: string): void {
+  private shouldAutoPlayNext = false;
+
+  public async goToSiblingChapter(targetChapterId?: string): Promise<void> {
     if (!targetChapterId || !this.bookId) return;
+
+    // Check if music was actively playing
+    const currentState = await firstValueFrom(this.playerState$);
+    this.shouldAutoPlayNext = currentState.isPlaying;
+
     this.router.navigate(['/reader', this.bookId, targetChapterId], { replaceUrl: true });
   }
 

@@ -1,4 +1,4 @@
-name: White-Label Android APK Build
+name: White-Label Android Build (APK & Play Store AAB)
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
         default: 'pushtiprakash'
         type: string
       app_name:
-        description: 'Initial Native App Display Name'
+        description: 'Native App Display Name'
         required: true
         default: 'PushtiPrakash'
         type: string
@@ -29,14 +29,19 @@ on:
         default: 'https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets/images/logo.png'
         type: string
       build_version:
-        description: 'Semantic App Version (e.g., 1.0.0)'
+        description: 'Semantic Version Name (e.g., 1.0.0)'
         required: true
         default: '1.0.0'
         type: string
+      version_code:
+        description: 'Google Play Integer Version Code (e.g., 1, 2, 3...)'
+        required: true
+        default: '1'
+        type: string
 
 jobs:
-  build-client-apk:
-    name: Build APK for ${{ inputs.client_key }}
+  build-client-android:
+    name: Build Android Packages for ${{ inputs.client_key }}
     runs-on: ubuntu-latest
 
     steps:
@@ -90,7 +95,17 @@ jobs:
             sed -i "s|<string name=\"title_activity_main\">.*</string>|<string name=\"title_activity_main\">${{ inputs.app_name }}</string>|g" android/app/src/main/res/values/strings.xml
           fi
 
-      # Detects logo and scales round logos into Android's 72% safe-zone to prevent cropping
+      # Update Google Play Version Code and Version Name in build.gradle
+      - name: Stamp Version Code & Name in build.gradle
+        run: |
+          GRADLE_FILE="android/app/build.gradle"
+          if [ -f "$GRADLE_FILE" ]; then
+            sed -i "s|versionCode [0-9]*|versionCode ${{ inputs.version_code }}|g" "$GRADLE_FILE"
+            sed -i "s|versionName \".*\"|versionName \"${{ inputs.build_version }}\"|g" "$GRADLE_FILE"
+            echo "Updated build.gradle with versionCode ${{ inputs.version_code }} and versionName ${{ inputs.build_version }}"
+          fi
+
+      # Scales all launcher icons to 68% centered with safe-zone margin
       - name: Stamp Android Launcher App Icon from Logo Location
         run: |
           mkdir -p /tmp
@@ -110,34 +125,38 @@ jobs:
               dir="android/app/src/main/res/mipmap-${folder}"
               mkdir -p "$dir"
               
-              # Standard and legacy round icons
-              convert /tmp/logo.png -resize "${size}x${size}" "$dir/ic_launcher.png" || true
-              convert /tmp/logo.png -resize "${size}x${size}" "$dir/ic_launcher_round.png" || true
-              
-              # Adaptive icon foreground scaled to 72% with transparent margins so circle edges never clip
-              fg_size=$(( size * 72 / 100 ))
-              convert /tmp/logo.png -resize "${fg_size}x${fg_size}" -gravity center -background none -extent "${size}x${size}" "$dir/ic_launcher_foreground.png" || true
+              icon_size=$(( size * 68 / 100 ))
+              convert /tmp/logo.png -resize "${icon_size}x${icon_size}" -gravity center -background none -extent "${size}x${size}" "$dir/ic_launcher.png" || true
+              convert /tmp/logo.png -resize "${icon_size}x${icon_size}" -gravity center -background none -extent "${size}x${size}" "$dir/ic_launcher_round.png" || true
+              convert /tmp/logo.png -resize "${icon_size}x${icon_size}" -gravity center -background none -extent "${size}x${size}" "$dir/ic_launcher_foreground.png" || true
             done
-            echo "Successfully generated Android home screen launcher icons with safe-zone padding!"
+            echo "Successfully generated Android launcher icons scaled at 68%!"
           else
             echo "Warning: Logo image not found, keeping default icon."
           fi
 
-      - name: Build Android APK (Debug / Unsigned Release)
+      # Compiles BOTH Installable APK and Google Play Store Release Bundle (AAB)
+      - name: Build Android APK and Play Store AAB
         working-directory: ./android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug bundleRelease
 
-      - name: Rename APK for Client Delivery
+      # Package both outputs into a clean distribution folder
+      - name: Package Deliverables (APK & AAB)
         run: |
-          mkdir -p dist-apk
+          mkdir -p dist-android
+          # 1. Installable APK (for testing and direct delivery)
           cp android/app/build/outputs/apk/debug/app-debug.apk \
-            "dist-apk/${{ inputs.client_key }}-v${{ inputs.build_version }}.apk"
+            "dist-android/${{ inputs.client_key }}-v${{ inputs.build_version }}.apk"
 
-      - name: Upload Client APK Artifact
+          # 2. Google Play Store Bundle (.aab)
+          cp android/app/build/outputs/bundle/release/app-release.aab \
+            "dist-android/${{ inputs.client_key }}-v${{ inputs.build_version }}-b${{ inputs.version_code }}-playstore.aab"
+
+      - name: Upload Android Build Artifacts (APK + AAB)
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.client_key }}-v${{ inputs.build_version }}-apk
-          path: dist-apk/${{ inputs.client_key }}-v${{ inputs.build_version }}.apk
+          name: ${{ inputs.client_key }}-v${{ inputs.build_version }}-android-bundle
+          path: dist-android/
           retention-days: 30
