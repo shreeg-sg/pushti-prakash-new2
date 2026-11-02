@@ -6,8 +6,7 @@ import {
   IonList,
   IonItem,
   IonLabel,
-  IonIcon,
-  IonCard
+  IonIcon
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
@@ -33,37 +32,36 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     IonList,
     IonItem,
     IonLabel,
-    IonIcon,
-    IonCard
+    IonIcon
   ],
   template: `
     <app-header [pageTitle]="activeBookTitle"></app-header>
 
     <ion-content class="ion-padding chapters-content">
       <div class="chapters-wrapper" *ngIf="activeBook">
-        <!-- Title & Description Header Card with Watermark Cover Photo -->
-        <ion-card
+        <!-- Title & Description Header Section (Strict 15% Viewport Height with Cover Watermark) -->
+        <div
           class="book-banner-card"
           [style.--cover-watermark]="'url(' + getCoverWatermarkUrl(activeBook) + ')'">
           <div class="banner-watermark-overlay" aria-hidden="true"></div>
-          
+
           <div class="banner-content">
             <h1 class="book-title">{{ localize(activeBook.title) }}</h1>
             <p *ngIf="activeBook.subtitle" class="book-subtitle">{{ localize(activeBook.subtitle) }}</p>
-            
-            <!-- Shows exact count of chapters (e.g. '16 Chapters' / '16 अध्याय') -->
+
             <div class="chapter-count-chip">
               <ion-icon name="book-outline"></ion-icon>
               <span>{{ getChaptersCountLabel(activeBook.chapters.length) }}</span>
             </div>
           </div>
-        </ion-card>
+        </div>
 
-        <!-- Chapter List Section Heading -->
+        <!-- Section Heading -->
         <div class="section-title">
           {{ getChaptersSectionTitle() }}
         </div>
 
+        <!-- Full List of Chapters -->
         <ion-list lines="full" class="chapters-list">
           <ion-item
             *ngFor="let chapter of activeBook.chapters; trackBy: trackByChapterId; let i = index"
@@ -97,16 +95,26 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       margin: 0 auto;
       padding-bottom: 30px;
     }
-    /* Banner Card with Watermark Cover Photo */
+
+    /* Requirement: Exactly 15% Viewport Height Title Section with Cover Watermark */
     .book-banner-card {
       position: relative;
-      margin: 0 0 20px 0;
+      margin: 0 0 16px 0;
       border-radius: 18px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
       background: var(--ion-card-background, #fff8ec);
       border: 1px solid rgba(var(--ion-color-primary-rgb), 0.18);
       overflow: hidden;
+      
+      /* 15% Viewport Height */
+      height: 15vh;
+      min-height: 105px;
+      max-height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
+
     .banner-watermark-overlay {
       position: absolute;
       top: 0;
@@ -117,58 +125,80 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       background-repeat: no-repeat;
       background-position: center;
       background-size: cover;
-      opacity: 0.14; /* Watermark visibility */
+      opacity: 0.15; /* Watermark visibility */
       pointer-events: none;
       z-index: 0;
     }
+
     .banner-content {
       position: relative;
       z-index: 1;
-      padding: 24px 20px;
+      padding: 8px 16px;
       text-align: center;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
+
     .book-title {
-      font-size: 1.45rem;
+      font-size: 1.25rem;
       font-weight: 800;
-      margin: 0 0 8px 0;
+      margin: 0 0 4px 0;
       color: var(--ion-color-primary);
+      line-height: 1.25;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 94%;
     }
+
     .book-subtitle {
-      font-size: 0.95rem;
+      font-size: 0.85rem;
       color: var(--ion-color-medium);
-      margin: 0 0 14px 0;
-      line-height: 1.45;
+      margin: 0 0 6px 0;
+      line-height: 1.2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 94%;
     }
+
     .chapter-count-chip {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
       background: rgba(var(--ion-color-primary-rgb), 0.12);
       color: var(--ion-color-primary);
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-size: 0.85rem;
+      padding: 3px 10px;
+      border-radius: 16px;
+      font-size: 0.78rem;
       font-weight: 700;
     }
+
     .section-title {
-      font-size: 0.88rem;
+      font-size: 0.85rem;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.8px;
       color: var(--ion-color-medium);
       margin: 16px 4px 8px;
     }
+
     .chapters-list {
       border-radius: 14px;
       overflow: hidden;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
       background: var(--ion-card-background, #fff8ec);
     }
+
     .chapter-row-item {
       --padding-start: 14px;
       --inner-padding-end: 14px;
-      --min-height: 60px;
+      --min-height: 58px;
     }
+
     .chapter-index-circle {
       width: 32px;
       height: 32px;
@@ -182,13 +212,15 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       font-size: 0.85rem;
       margin-right: 12px;
     }
+
     .chapter-title {
-      font-size: 1rem;
+      font-size: 0.98rem;
       font-weight: 600;
       color: var(--ion-text-color, #2c1810);
     }
+
     .media-icon {
-      font-size: 1.4rem;
+      font-size: 1.35rem;
     }
   `]
 })

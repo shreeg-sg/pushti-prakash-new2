@@ -8,10 +8,6 @@ import {
   IonGrid,
   IonRow,
   IonCol,
-  IonCard,
-  IonCardHeader,
-  IonCardTitle,
-  IonCardSubtitle,
   IonIcon
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
@@ -39,16 +35,12 @@ import { Book } from '../../core/models/app-config.model';
     IonGrid,
     IonRow,
     IonCol,
-    IonCard,
-    IonCardHeader,
-    IonCardTitle,
-    IonCardSubtitle,
     IonIcon
   ],
   template: `
     <app-header [showBackButton]="false"></app-header>
 
-    <!-- Sticky Notification Banner (Max 25vh height, hides on scroll down when books are present) -->
+    <!-- Sticky Notification Banner (Max 25vh, hides on scroll down) -->
     <div
       class="sticky-notification-banner"
       *ngIf="(updateBanner$ | async) as bannerText"
@@ -61,7 +53,7 @@ import { Book } from '../../core/models/app-config.model';
       [scrollEvents]="true"
       (ionScroll)="onDashboardScroll($event)"
       class="ion-padding dashboard-content">
-      <!-- Direct Watermark Binding (15% opacity behind book cards) -->
+      <!-- Direct Watermark Binding (15% opacity behind book grid) -->
       <div
         class="watermark-overlay"
         *ngIf="watermarkUrl$ | async as wmUrl"
@@ -73,7 +65,7 @@ import { Book } from '../../core/models/app-config.model';
         <ion-refresher-content></ion-refresher-content>
       </ion-refresher>
 
-      <!-- Clean Book Cards (Clicking opens /chapters/:bookId) -->
+      <!-- Book Cards (Max 15% Viewport Height with Cover Photo Watermark) -->
       <ion-grid fixed class="books-grid">
         <ion-row *ngIf="visibleBooks$ | async as books">
           <ion-col
@@ -81,32 +73,27 @@ import { Book } from '../../core/models/app-config.model';
             sizeMd="6"
             sizeLg="4"
             *ngFor="let book of books; trackBy: trackByBookId">
-            <ion-card class="book-card" (click)="openBookChapters(book.id)">
-              <div class="book-cover-wrapper">
-                <img
-                  *ngIf="book.coverImageUrl"
-                  [src]="dataService.resolveMediaUrl(book.coverImageUrl)"
-                  [alt]="localize(book.title)"
-                  class="book-cover-img"
-                  (error)="onCoverError($event)" />
+            <div
+              class="book-card"
+              [style.--book-watermark]="'url(' + getCoverWatermarkUrl(book) + ')'"
+              (click)="openBookChapters(book.id)">
+              <!-- Dynamic Cover Photo Watermark Background -->
+              <div class="book-watermark-overlay" aria-hidden="true"></div>
+
+              <!-- Card Content Floating on Top of Watermark -->
+              <div class="book-card-content">
+                <div class="title-row">
+                  <h2 class="book-card-title">{{ localize(book.title) }}</h2>
+                  <ion-icon name="arrow-forward-outline" class="action-arrow"></ion-icon>
+                </div>
+                <p *ngIf="book.subtitle" class="book-card-subtitle">{{ localize(book.subtitle) }}</p>
+
                 <div class="chapter-count-badge">
                   <ion-icon name="book-outline"></ion-icon>
                   <span>{{ book.chapters.length }} Chapters</span>
                 </div>
               </div>
-
-              <ion-card-header>
-                <div class="title-row">
-                  <ion-card-title class="book-card-title">
-                    {{ localize(book.title) }}
-                  </ion-card-title>
-                  <ion-icon name="arrow-forward-outline" class="action-arrow"></ion-icon>
-                </div>
-                <ion-card-subtitle *ngIf="book.subtitle" class="book-card-subtitle">
-                  {{ localize(book.subtitle) }}
-                </ion-card-subtitle>
-              </ion-card-header>
-            </ion-card>
+            </div>
           </ion-col>
         </ion-row>
       </ion-grid>
@@ -128,18 +115,15 @@ import { Book } from '../../core/models/app-config.model';
       font-size: 0.92rem;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 
-      /* Requirement: Never exceed 25% of viewport height */
       max-height: 25vh;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
 
-      /* Smooth transition when hiding on scroll */
       transition: transform 0.28s ease, opacity 0.28s ease, max-height 0.28s ease, padding 0.28s ease;
       transform: translateY(0);
       opacity: 1;
     }
 
-    /* Hidden state triggered on scroll down */
     .sticky-notification-banner.banner-hidden {
       transform: translateY(-100%);
       max-height: 0;
@@ -195,71 +179,104 @@ import { Book } from '../../core/models/app-config.model';
       z-index: 1;
     }
 
+    /* Requirement: 15% Viewport Height Max with Cover Photo Watermark */
     .book-card {
-      border-radius: 16px;
+      position: relative;
+      border-radius: 18px;
       overflow: hidden;
       margin: 8px 0;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
       transition: transform 0.22s ease, box-shadow 0.22s ease;
       background: var(--ion-card-background, #fff8ec);
+      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.18);
       cursor: pointer;
 
+      /* 15% Viewport Height Max */
+      height: 15vh;
+      max-height: 15vh;
+      min-height: 105px;
+      display: flex;
+      align-items: center;
+
       &:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+        transform: translateY(-3px);
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
       }
     }
 
-    .book-cover-wrapper {
-      position: relative;
-      height: 190px;
-      background: rgba(var(--ion-color-primary-rgb), 0.08);
-      overflow: hidden;
-    }
-
-    .book-cover-img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .chapter-count-badge {
+    /* Cover Photo Watermark Overlay */
+    .book-watermark-overlay {
       position: absolute;
-      bottom: 10px;
-      right: 10px;
-      background: rgba(0, 0, 0, 0.72);
-      color: #ffffff;
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-size: 0.78rem;
-      font-weight: 600;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: var(--book-watermark, none);
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: cover;
+      opacity: 0.15; /* Watermark visibility */
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .book-card-content {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      padding: 10px 18px;
       display: flex;
-      align-items: center;
-      gap: 4px;
+      flex-direction: column;
+      justify-content: center;
     }
 
     .title-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 8px;
+      gap: 10px;
     }
 
     .book-card-title {
-      font-size: 1.15rem;
-      font-weight: 700;
+      font-size: 1.22rem;
+      font-weight: 800;
+      color: var(--ion-color-primary);
+      margin: 0;
+      line-height: 1.25;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       flex: 1;
     }
 
     .action-arrow {
-      font-size: 1.2rem;
+      font-size: 1.25rem;
       color: var(--ion-color-primary);
       flex-shrink: 0;
     }
 
     .book-card-subtitle {
-      margin-top: 4px;
-      font-size: 0.86rem;
+      margin: 3px 0 8px 0;
+      font-size: 0.85rem;
+      color: var(--ion-color-medium);
+      line-height: 1.2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 90%;
+    }
+
+    .chapter-count-badge {
+      align-self: flex-start;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(var(--ion-color-primary-rgb), 0.12);
+      color: var(--ion-color-primary);
+      padding: 3px 10px;
+      border-radius: 16px;
+      font-size: 0.78rem;
+      font-weight: 700;
     }
   `]
 })
@@ -291,7 +308,6 @@ export class DashboardPage implements OnInit {
       this.currentLang = lang;
     });
 
-    // Track if books are present
     this.visibleBooks$.subscribe(books => {
       this.hasBooks = !!(books && books.length > 0);
       if (!this.hasBooks) {
@@ -300,8 +316,11 @@ export class DashboardPage implements OnInit {
     });
   }
 
+  public getCoverWatermarkUrl(book: Book): string {
+    return this.dataService.resolveMediaUrl(book.coverImageUrl);
+  }
+
   public onDashboardScroll(event: CustomEvent): void {
-    // Only auto-hide if books are available to scroll through
     if (!this.hasBooks) {
       this.isBannerHidden = false;
       return;
@@ -309,14 +328,11 @@ export class DashboardPage implements OnInit {
 
     const currentScrollTop = event.detail.scrollTop;
 
-    // At the top of the page, always show banner
     if (currentScrollTop <= 15) {
       this.isBannerHidden = false;
     } else if (currentScrollTop > this.lastScrollTop + 10 && currentScrollTop > 40) {
-      // Scrolling DOWN: hide banner
       this.isBannerHidden = true;
     } else if (currentScrollTop < this.lastScrollTop - 10) {
-      // Scrolling UP: reveal banner
       this.isBannerHidden = false;
     }
 
@@ -334,10 +350,6 @@ export class DashboardPage implements OnInit {
 
   public openBookChapters(bookId: string): void {
     this.router.navigate(['/chapters', bookId]);
-  }
-
-  public onCoverError(event: Event): void {
-    (event.target as HTMLImageElement).style.display = 'none';
   }
 
   public trackByBookId(_index: number, book: Book): string {
