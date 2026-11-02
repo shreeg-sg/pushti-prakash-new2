@@ -48,10 +48,10 @@ import { Book } from '../../core/models/app-config.model';
   template: `
     <app-header [showBackButton]="false"></app-header>
 
-    <!-- Sticky Notification Banner (Pinned below header, multi-lingual, no cancel/close button) -->
+    <!-- Sticky Notification Banner (Supports HTML: <br>, <b>, <i>, font sizes) -->
     <div class="sticky-notification-banner" *ngIf="(updateBanner$ | async) as bannerText">
       <ion-icon name="sparkles-outline" class="banner-icon"></ion-icon>
-      <span class="banner-text">{{ bannerText }}</span>
+      <span class="banner-text" [innerHTML]="bannerText"></span>
     </div>
 
     <ion-content class="ion-padding dashboard-content">
@@ -118,18 +118,25 @@ import { Book } from '../../core/models/app-config.model';
       border-bottom: 2px solid var(--ion-color-primary);
       padding: 10px 16px;
       color: var(--ion-text-color, #2c1810);
-      font-weight: 600;
+      font-weight: 500;
       font-size: 0.92rem;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     }
     .banner-icon {
-      font-size: 1.25rem;
+      font-size: 1.3rem;
       color: var(--ion-color-primary);
       flex-shrink: 0;
     }
     .banner-text {
       flex: 1;
-      line-height: 1.4;
+      line-height: 1.45;
+      white-space: pre-line; /* Renders literal \\n and HTML <br> cleanly */
+    }
+    .banner-text b, .banner-text strong {
+      font-weight: 700;
+    }
+    .banner-text i, .banner-text em {
+      font-style: italic;
     }
     .dashboard-content {
       position: relative;

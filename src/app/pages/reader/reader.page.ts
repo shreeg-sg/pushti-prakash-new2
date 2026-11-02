@@ -76,107 +76,118 @@ import { Book, Chapter } from '../../core/models/app-config.model';
           <p class="loading-label">Loading sacred text...</p>
         </div>
 
-        <!-- Sacred Transcript: Completely protected from text selection and copying -->
+        <!-- Sacred Transcript: HTML formatting + Normal 1 Line Spacing -->
         <div class="transcript-content" *ngIf="!isLoadingTranscript">
           <p
             *ngFor="let paragraph of transcriptParagraphs"
             class="transcript-paragraph"
-            [class.active-tts-chunk]="isChunkHighlighted(paragraph, (playerState$ | async))">
-            {{ paragraph }}
+            [class.active-tts-chunk]="isChunkHighlighted(paragraph, (playerState$ | async))"
+            [innerHTML]="paragraph">
           </p>
-        </div>
-
-        <!-- Previous / Next Chapter Stepper Navigation -->
-        <div class="chapter-step-nav">
-          <ion-button
-            fill="outline"
-            size="small"
-            [disabled]="!prevChapterId"
-            (click)="goToSiblingChapter(prevChapterId)">
-            <ion-icon slot="start" name="play-skip-back-outline"></ion-icon>
-            Prev
-          </ion-button>
-
-          <ion-button
-            fill="outline"
-            size="small"
-            [disabled]="!nextChapterId"
-            (click)="goToSiblingChapter(nextChapterId)">
-            Next
-            <ion-icon slot="end" name="play-skip-forward-outline"></ion-icon>
-          </ion-button>
         </div>
       </div>
     </ion-content>
 
-    <!-- Floating Audio/TTS Player Dock with Screen-Awake Integration -->
-    <div class="floating-audio-dock" *ngIf="playerState$ | async as state">
-      <div class="player-meta-row">
-        <ion-badge [color]="state.mode === 'audio' ? 'secondary' : 'tertiary'" class="mode-badge">
-          <ion-icon [name]="state.mode === 'audio' ? 'volume-high-outline' : 'mic-outline'"></ion-icon>
-          <span>
-            {{
-              state.mode === 'audio'
-                ? ((uiText$ | async)?.['audio_playing_recorded'] || 'Recorded Audio')
-                : ((uiText$ | async)?.['audio_playing_tts'] || 'Text-to-Speech (TTS)')
-            }}
-          </span>
-        </ion-badge>
+    <!-- Floating Dock Wrapper: Sticky Prev/Next Stepper Row + Audio Controls -->
+    <div class="floating-dock-wrapper" *ngIf="playerState$ | async as state">
+      <!-- Sticky Chapter Stepper Bar Just Above Audio Controls -->
+      <div class="sticky-stepper-bar">
+        <ion-button
+          fill="solid"
+          size="small"
+          color="light"
+          class="stepper-nav-btn"
+          [disabled]="!prevChapterId"
+          (click)="goToSiblingChapter(prevChapterId)">
+          <ion-icon slot="start" name="play-skip-back-outline"></ion-icon>
+          Prev
+        </ion-button>
 
-        <span class="time-counter" *ngIf="state.mode === 'audio'">
-          {{ formatSeconds(state.currentTime) }} / {{ formatSeconds(state.duration) }}
+        <span class="stepper-title-indicator" *ngIf="activeChapter">
+          {{ activeChapterTitle }}
         </span>
-        <span class="time-counter" *ngIf="state.mode === 'tts'">
-          {{ state.currentTime + 1 }} / {{ state.duration || 1 }}
-        </span>
+
+        <ion-button
+          fill="solid"
+          size="small"
+          color="light"
+          class="stepper-nav-btn"
+          [disabled]="!nextChapterId"
+          (click)="goToSiblingChapter(nextChapterId)">
+          Next
+          <ion-icon slot="end" name="play-skip-forward-outline"></ion-icon>
+        </ion-button>
       </div>
 
-      <ion-range
-        class="player-scrub-bar"
-        [min]="0"
-        [max]="state.duration > 0 ? state.duration : 1"
-        [value]="state.currentTime"
-        (ionChange)="onSeek($event)">
-      </ion-range>
+      <!-- Floating Audio/TTS Player Dock -->
+      <div class="floating-audio-dock">
+        <div class="player-meta-row">
+          <ion-badge [color]="state.mode === 'audio' ? 'secondary' : 'tertiary'" class="mode-badge">
+            <ion-icon [name]="state.mode === 'audio' ? 'volume-high-outline' : 'mic-outline'"></ion-icon>
+            <span>
+              {{
+                state.mode === 'audio'
+                  ? ((uiText$ | async)?.['audio_playing_recorded'] || 'Recorded Audio')
+                  : ((uiText$ | async)?.['audio_playing_tts'] || 'Text-to-Speech (TTS)')
+              }}
+            </span>
+          </ion-badge>
 
-      <div class="player-controls-row">
-        <!-- Speed Picker with Clean Popover List -->
-        <div class="speed-picker-wrapper">
-          <ion-icon name="speedometer-outline" class="speed-icon"></ion-icon>
-          <ion-select
-            interface="popover"
-            [value]="state.playbackRate"
-            (ionChange)="onSpeedSelected($event.detail.value)"
-            class="speed-select-popover"
-            aria-label="Playback Speed">
-            <ion-select-option [value]="0.75">0.75x</ion-select-option>
-            <ion-select-option [value]="0.85">0.85x</ion-select-option>
-            <ion-select-option [value]="1.0">1.0x (Normal)</ion-select-option>
-            <ion-select-option [value]="1.25">1.25x</ion-select-option>
-            <ion-select-option [value]="1.5">1.5x</ion-select-option>
-            <ion-select-option [value]="1.75">1.75x</ion-select-option>
-            <ion-select-option [value]="2.0">2.0x</ion-select-option>
-          </ion-select>
+          <span class="time-counter" *ngIf="state.mode === 'audio'">
+            {{ formatSeconds(state.currentTime) }} / {{ formatSeconds(state.duration) }}
+          </span>
+          <span class="time-counter" *ngIf="state.mode === 'tts'">
+            {{ state.currentTime + 1 }} / {{ state.duration || 1 }}
+          </span>
         </div>
 
-        <!-- Primary Play/Pause Button (Keeps screen awake while playing) -->
-        <div class="primary-transport">
-          <ion-button
-            shape="round"
-            color="primary"
-            class="play-pause-btn"
-            [disabled]="state.isLoading"
-            (click)="ttsService.togglePlayPause()">
-            <ion-spinner *ngIf="state.isLoading" name="crescent"></ion-spinner>
-            <ion-icon
-              *ngIf="!state.isLoading"
-              slot="icon-only"
-              [name]="state.isPlaying ? 'pause' : 'play'">
-            </ion-icon>
-          </ion-button>
-        </div>
+        <ion-range
+          class="player-scrub-bar"
+          [min]="0"
+          [max]="state.duration > 0 ? state.duration : 1"
+          [value]="state.currentTime"
+          (ionChange)="onSeek($event)">
+        </ion-range>
 
-        <div class="transport-spacer-right"></div>
+        <div class="player-controls-row">
+          <!-- Speed Picker with Clean Popover List -->
+          <div class="speed-picker-wrapper">
+            <ion-icon name="speedometer-outline" class="speed-icon"></ion-icon>
+            <ion-select
+              interface="popover"
+              [value]="state.playbackRate"
+              (ionChange)="onSpeedSelected($event.detail.value)"
+              class="speed-select-popover"
+              aria-label="Playback Speed">
+              <ion-select-option [value]="0.75">0.75x</ion-select-option>
+              <ion-select-option [value]="0.85">0.85x</ion-select-option>
+              <ion-select-option [value]="1.0">1.0x (Normal)</ion-select-option>
+              <ion-select-option [value]="1.25">1.25x</ion-select-option>
+              <ion-select-option [value]="1.5">1.5x</ion-select-option>
+              <ion-select-option [value]="1.75">1.75x</ion-select-option>
+              <ion-select-option [value]="2.0">2.0x</ion-select-option>
+            </ion-select>
+          </div>
+
+          <!-- Primary Play/Pause Button -->
+          <div class="primary-transport">
+            <ion-button
+              shape="round"
+              color="primary"
+              class="play-pause-btn"
+              [disabled]="state.isLoading"
+              (click)="ttsService.togglePlayPause()">
+              <ion-spinner *ngIf="state.isLoading" name="crescent"></ion-spinner>
+              <ion-icon
+                *ngIf="!state.isLoading"
+                slot="icon-only"
+                [name]="state.isPlaying ? 'pause' : 'play'">
+              </ion-icon>
+            </ion-button>
+          </div>
+
+          <div class="transport-spacer-right"></div>
+        </div>
       </div>
     </div>
   `,
@@ -218,7 +229,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     .reader-body {
       max-width: 780px;
       margin: 0 auto;
-      padding-bottom: 155px;
+      padding-bottom: 215px; /* Ensures text never hides behind the sticky stepper + player dock */
       position: relative;
       z-index: 1;
     }
@@ -256,14 +267,23 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       font-weight: 500;
     }
 
+    /* Scripture Paragraphs: Normal 1 Line Spacing & HTML formatting */
     .transcript-paragraph {
       font-size: var(--app-reader-font-size, 1.05rem);
-      line-height: var(--app-reader-line-height, 1.65);
-      margin-bottom: 16px;
+      line-height: 1.0 !important; /* Normal 1 line spacing */
+      margin-bottom: 14px;
       white-space: pre-line;
       padding: 6px 8px;
       border-radius: 8px;
       transition: background-color 0.2s ease;
+    }
+
+    .transcript-paragraph b, .transcript-paragraph strong {
+      font-weight: 700;
+    }
+
+    .transcript-paragraph i, .transcript-paragraph em {
+      font-style: italic;
     }
 
     .active-tts-chunk {
@@ -271,27 +291,57 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       border-left: 3px solid var(--ion-color-primary);
     }
 
-    .chapter-step-nav {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 28px;
-      padding-top: 16px;
-      border-top: 1px solid rgba(0, 0, 0, 0.08);
-    }
-
-    .floating-audio-dock {
+    /* Floating Dock Wrapper containing Sticky Stepper & Audio Player */
+    .floating-dock-wrapper {
       position: fixed;
       left: 12px;
       right: 12px;
-      bottom: 24px;
+      bottom: 20px;
       max-width: 680px;
       margin: 0 auto;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* Sticky Stepper Bar Just Above Audio Controls */
+    .sticky-stepper-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--ion-card-background, #fff8ec);
+      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.2);
+      border-radius: 14px;
+      padding: 4px 8px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    }
+
+    .stepper-nav-btn {
+      --border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.82rem;
+      height: 32px;
+    }
+
+    .stepper-title-indicator {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--ion-color-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 170px;
+      padding: 0 8px;
+      text-align: center;
+    }
+
+    .floating-audio-dock {
       background: var(--ion-card-background, #fff8ec);
       border: 1px solid rgba(var(--ion-color-primary-rgb), 0.22);
       border-radius: 18px;
       padding: 10px 16px 8px;
       box-shadow: 0 10px 28px rgba(0, 0, 0, 0.15);
-      z-index: 100;
     }
 
     .player-meta-row {

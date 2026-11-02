@@ -40,38 +40,28 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     <app-header [pageTitle]="activeBookTitle"></app-header>
 
     <ion-content class="ion-padding chapters-content">
-      <!-- Direct Watermark Binding (15% opacity behind chapter list) -->
-      <div
-        class="watermark-overlay"
-        *ngIf="watermarkUrl$ | async as wmUrl"
-        [style.backgroundImage]="'url(' + wmUrl + ')'"
-        aria-hidden="true">
-      </div>
-
       <div class="chapters-wrapper" *ngIf="activeBook">
-        <!-- Book Banner Header Card -->
-        <ion-card class="book-banner-card">
-          <div class="banner-inner">
-            <img
-              *ngIf="activeBook.coverImageUrl"
-              [src]="dataService.resolveMediaUrl(activeBook.coverImageUrl)"
-              [alt]="localize(activeBook.title)"
-              class="banner-cover-img"
-              (error)="onCoverError($event)" />
-            <div class="banner-text">
-              <h1 class="book-title">{{ localize(activeBook.title) }}</h1>
-              <p *ngIf="activeBook.subtitle" class="book-subtitle">{{ localize(activeBook.subtitle) }}</p>
-              <div class="chapter-count-chip">
-                <ion-icon name="book-outline"></ion-icon>
-                <span>{{ activeBook.chapters.length }} {{ (uiText$ | async)?.['nav_books_header'] || 'Chapters' }}</span>
-              </div>
+        <!-- Title & Description Header Card with Watermark Cover Photo -->
+        <ion-card
+          class="book-banner-card"
+          [style.--cover-watermark]="'url(' + getCoverWatermarkUrl(activeBook) + ')'">
+          <div class="banner-watermark-overlay" aria-hidden="true"></div>
+          
+          <div class="banner-content">
+            <h1 class="book-title">{{ localize(activeBook.title) }}</h1>
+            <p *ngIf="activeBook.subtitle" class="book-subtitle">{{ localize(activeBook.subtitle) }}</p>
+            
+            <!-- Shows exact count of chapters (e.g. '16 Chapters' / '16 अध्याय') -->
+            <div class="chapter-count-chip">
+              <ion-icon name="book-outline"></ion-icon>
+              <span>{{ getChaptersCountLabel(activeBook.chapters.length) }}</span>
             </div>
           </div>
         </ion-card>
 
-        <!-- Full List of Chapters -->
+        <!-- Chapter List Section Heading -->
         <div class="section-title">
-          {{ (uiText$ | async)?.['nav_books_header'] || 'Chapters' }}
+          {{ getChaptersSectionTitle() }}
         </div>
 
         <ion-list lines="full" class="chapters-list">
@@ -102,76 +92,66 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     .chapters-content {
       position: relative;
     }
-    .watermark-overlay {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 280px;
-      height: 280px;
-      background-repeat: no-repeat;
-      background-position: center;
-      background-size: contain;
-      opacity: 0.15;
-      pointer-events: none;
-      z-index: 0;
-    }
     .chapters-wrapper {
-      position: relative;
-      z-index: 1;
       max-width: 760px;
       margin: 0 auto;
       padding-bottom: 30px;
     }
+    /* Banner Card with Watermark Cover Photo */
     .book-banner-card {
+      position: relative;
       margin: 0 0 20px 0;
-      border-radius: 16px;
+      border-radius: 18px;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
       background: var(--ion-card-background, #fff8ec);
       border: 1px solid rgba(var(--ion-color-primary-rgb), 0.18);
+      overflow: hidden;
     }
-    .banner-inner {
-      display: flex;
-      padding: 16px;
-      gap: 16px;
-      align-items: center;
+    .banner-watermark-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: var(--cover-watermark, none);
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: cover;
+      opacity: 0.14; /* Watermark visibility */
+      pointer-events: none;
+      z-index: 0;
     }
-    .banner-cover-img {
-      width: 90px;
-      height: 120px;
-      border-radius: 10px;
-      object-fit: cover;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-      flex-shrink: 0;
-    }
-    .banner-text {
-      flex: 1;
+    .banner-content {
+      position: relative;
+      z-index: 1;
+      padding: 24px 20px;
+      text-align: center;
     }
     .book-title {
-      font-size: 1.3rem;
+      font-size: 1.45rem;
       font-weight: 800;
-      margin: 0 0 6px 0;
+      margin: 0 0 8px 0;
       color: var(--ion-color-primary);
     }
     .book-subtitle {
-      font-size: 0.88rem;
+      font-size: 0.95rem;
       color: var(--ion-color-medium);
-      margin: 0 0 10px 0;
-      line-height: 1.4;
+      margin: 0 0 14px 0;
+      line-height: 1.45;
     }
     .chapter-count-chip {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      background: rgba(var(--ion-color-primary-rgb), 0.1);
+      background: rgba(var(--ion-color-primary-rgb), 0.12);
       color: var(--ion-color-primary);
-      padding: 4px 10px;
+      padding: 6px 14px;
       border-radius: 20px;
-      font-size: 0.78rem;
+      font-size: 0.85rem;
       font-weight: 700;
     }
     .section-title {
-      font-size: 0.85rem;
+      font-size: 0.88rem;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.8px;
@@ -186,28 +166,29 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     }
     .chapter-row-item {
       --padding-start: 14px;
-      --min-height: 52px;
+      --inner-padding-end: 14px;
+      --min-height: 60px;
     }
     .chapter-index-circle {
-      width: 28px;
-      height: 28px;
+      width: 32px;
+      height: 32px;
       border-radius: 50%;
-      background: rgba(var(--ion-color-primary-rgb), 0.12);
+      background: rgba(var(--ion-color-primary-rgb), 0.1);
       color: var(--ion-color-primary);
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 700;
-      font-size: 0.82rem;
-      margin-right: 8px;
+      font-size: 0.85rem;
+      margin-right: 12px;
     }
     .chapter-title {
-      font-size: 0.98rem;
+      font-size: 1rem;
       font-weight: 600;
       color: var(--ion-text-color, #2c1810);
     }
     .media-icon {
-      font-size: 1.3rem;
+      font-size: 1.4rem;
     }
   `]
 })
@@ -217,11 +198,9 @@ export class ChaptersPage implements OnInit {
   public dataService = inject(DataService);
   private storageService = inject(StorageService);
 
-  public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
-  public watermarkUrl$: Observable<string> = this.dataService.watermarkUrl$;
-
   public activeBook?: Book;
   public activeBookTitle = '';
+  public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
   private currentLang = 'hi';
 
   constructor() {
@@ -231,18 +210,34 @@ export class ChaptersPage implements OnInit {
   ngOnInit(): void {
     combineLatest([
       this.route.paramMap,
-      this.storageService.selectedLanguage$,
-      this.dataService.visibleBooks$
-    ]).subscribe(([params, lang, books]) => {
+      this.dataService.visibleBooks$,
+      this.storageService.selectedLanguage$
+    ]).subscribe(([params, books, lang]) => {
       this.currentLang = lang;
       const bookId = params.get('bookId');
-      if (bookId && books.length > 0) {
-        this.activeBook = books.find(b => b.id === bookId);
-        if (this.activeBook) {
-          this.activeBookTitle = this.dataService.localizeField(this.activeBook.title, lang);
-        }
+      if (!bookId) return;
+
+      this.activeBook = books.find(b => b.id === bookId);
+      if (this.activeBook) {
+        this.activeBookTitle = this.localize(this.activeBook.title);
       }
     });
+  }
+
+  public getCoverWatermarkUrl(book: Book): string {
+    return this.dataService.resolveMediaUrl(book.coverImageUrl);
+  }
+
+  public getChaptersCountLabel(count: number): string {
+    if (this.currentLang === 'hi' || this.currentLang === 'mr') return `${count} अध्याय`;
+    if (this.currentLang === 'gu') return `${count} અધ્યાય`;
+    return `${count} ${count === 1 ? 'Chapter' : 'Chapters'}`;
+  }
+
+  public getChaptersSectionTitle(): string {
+    if (this.currentLang === 'hi' || this.currentLang === 'mr') return 'अध्याय सूची';
+    if (this.currentLang === 'gu') return 'અધ્યાય સૂચિ';
+    return 'Chapters';
   }
 
   public localize(mapObj: Record<string, string> | undefined): string {
@@ -250,16 +245,12 @@ export class ChaptersPage implements OnInit {
   }
 
   public hasRecordedAudio(chapter: Chapter): boolean {
-    const url = this.dataService.localizeField(chapter.audioUrl, this.currentLang);
-    return Boolean(url && url.trim().length > 0);
+    const raw = this.dataService.localizeField(chapter.audioUrl, this.currentLang);
+    return !!raw && raw.trim().length > 0;
   }
 
   public openChapter(bookId: string, chapterId: string): void {
     this.router.navigate(['/reader', bookId, chapterId]);
-  }
-
-  public onCoverError(event: Event): void {
-    (event.target as HTMLImageElement).style.display = 'none';
   }
 
   public trackByChapterId(_index: number, chapter: Chapter): string {
