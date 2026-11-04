@@ -9,17 +9,4 @@
   line-height: var(--app-reader-line-height);
   transition: font-size 0.2s ease-in-out;
   position: relative;
-
-  &::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image: var(--app-watermark-image);
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: 55%;
-    opacity: 0.05;
-    pointer-events: none;
-    z-index: 0;
-  }
 }

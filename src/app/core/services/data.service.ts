@@ -104,19 +104,25 @@ export class DataService implements OnDestroy {
   constructor() { }
 
   public async initialize(): Promise<void> {
+    // 1. Instantly publish cached config if available for 0ms cold startup
     const cachedConfig = await this.loadCachedConfig();
     if (cachedConfig) {
       this.applyAndPublishConfig(cachedConfig);
-    } else {
+    }
+
+    // 2. Primary Source of Truth: Fetch live configuration directly from remote media repository
+    // (Falling back to local bundle only if device is strictly offline and has no cache)
+    const remoteResult = await this.syncWithRemote();
+    if (!remoteResult.success && !cachedConfig) {
+      console.warn('[DataService] Offline and no cache detected. Loading emergency local bundle fallback...');
       await this.ensureFallbackLoaded();
     }
 
-    await this.syncIfDueToday();
-
+    // 3. Auto-sync on app resume
     this.appStateListener = await App.addListener('appStateChange', async (state: AppState) => {
       if (state.isActive) {
         this.ngZone.run(async () => {
-          await this.syncIfDueToday();
+          await this.syncWithRemote();
         });
       }
     });

@@ -6,7 +6,7 @@
       "mr": "पुष्टीप्रकाश",
       "en": "PushtiPrakash"
     },
-    "mediaBaseUrl": "https://cdn.jsdelivr.net/gh/shreeg-sg/pushtiprakash-media@main/src/assets",
+    "mediaBaseUrl": "https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets",
     "logoUrl": "images/logo.png",
     "watermarkUrl": "images/logo.png",
     "theme": {

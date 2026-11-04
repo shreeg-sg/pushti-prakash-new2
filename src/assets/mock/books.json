@@ -1,53 +1,377 @@
 [
-    {
-      "id": "book_shodash_granth",
-      "order": 1,
-      "isVisible": true,
-      "coverImageUrl": "images/shodash_granth.jpg",
-      "title": {
-        "hi": "षोडश ग्रंथ (Shodash Granth)",
-        "gu": "ષોડશ ગ્રંથ",
-        "en": "Shodash Granth"
-      },
-      "subtitle": {
-        "hi": "महाप्रभु श्री वल्लभाचार्य विरचित १६ ग्रंथ",
-        "gu": "મહાપ્રભુ શ્રી વલ્લભાચાર્ય રચિત ૧૬ ગ્રંથો",
-        "en": "16 Foundational Treatises by Shri Vallabhacharya"
-      },
-      "chapters": [
-        {
-          "id": "ch_yamunashtakam",
-          "order": 1,
-          "isVisible": true,
-          "title": {
-            "hi": "१. श्री यमुनाष्टकम्",
-            "gu": "૧. શ્રી યમુનાષ્ટકમ્",
-            "en": "1. Shri Yamunashtakam"
-          },
-          "audioUrl": {
-            "hi": "audio/yamunashtakam.mp3",
-            "gu": "audio/yamunashtakam.mp3",
-            "en": "audio/yamunashtakam.mp3"
-          },
-          "durationSeconds": 245,
-          "contentUrl": "chapters/book_shodash_granth/ch_yamunashtakam.json"
+  {
+    "id": "book_shodash_granth",
+    "order": 1,
+    "isVisible": true,
+    "coverImageUrl": "images/shodash_granth.jpg",
+    "title": {
+      "hi": "षोडश ग्रंथ (Shodash Granth)",
+      "gu": "ષોડશ ગ્રંથ",
+      "en": "Shodash Granth"
+    },
+    "subtitle": {
+      "hi": "महाप्रभु श्री वल्लभाचार्य विरचित १६ मौलिक ग्रंथ",
+      "gu": "મહાપ્રભુ શ્રી વલ્લભાચાર્ય રચિત ૧૬ મૌલિક ગ્રંથો",
+      "en": "16 Foundational Treatises by Shri Vallabhacharya"
+    },
+    "chapters": [
+      {
+        "id": "ch_sg_mangalacharanam",
+        "order": 1,
+        "isVisible": true,
+        "title": {
+          "hi": "मंगलाचरण (Pratah Smaran & Mangalacharanam)",
+          "gu": "મંગલાચરણ (પ્રાતઃ સ્મરણ અને મંગલાચરણ)",
+          "en": "Mangalacharanam (Daily Invocation)"
         },
-        {
-          "id": "ch_balabodha",
-          "order": 2,
-          "isVisible": true,
-          "title": {
-            "hi": "२. बालबोधः",
-            "gu": "૨. બાલબોધઃ",
-            "en": "2. Balabodha"
-          },
-          "audioUrl": {
-            "hi": "audio/MANGALACHARANAM.mp3",
-            "gu": "audio/MANGALACHARANAM.mp3",
-            "en": "audio/MANGALACHARANAM.mp3"
-          },
-          "contentUrl": "chapters/book_shodash_granth/ch_balabodha.json"
-        }
-      ]
-    }
-  ]
+        "subtitle": {
+          "hi": "श्री वल्लभाचार्य चरण वंदना",
+          "gu": "શ્રી વલ્લભાચાર્ય ચરણ વંદના",
+          "en": "Invocation to Shri Vallabhacharya"
+        },
+        "audioUrl": {
+          "hi": "audio/mangalacharanam.mp3",
+          "gu": "audio/mangalacharanam.mp3",
+          "en": "audio/mangalacharanam.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_mangalacharanam.json"
+      },
+      {
+        "id": "ch_sg_yamunashtakam",
+        "order": 2,
+        "isVisible": true,
+        "title": {
+          "hi": "१. श्री यमुनाष्टकम्",
+          "gu": "૧. શ્રી યમુનાષ્ટકમ્",
+          "en": "1. Shri Yamunashtakam"
+        },
+        "subtitle": {
+          "hi": "प्रथम ग्रंथ - श्री यमुनाजी का स्तवन",
+          "gu": "પ્રથમ ગ્રંથ - શ્રી યમુનાજીનું સ્તવન",
+          "en": "1st Treatise - Hymn to Shri Yamuna"
+        },
+        "audioUrl": {
+          "hi": "audio/yamunashtakam.mp3",
+          "gu": "audio/yamunashtakam.mp3",
+          "en": "audio/yamunashtakam.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_yamunashtakam.json"
+      },
+      {
+        "id": "ch_sg_balabodha",
+        "order": 3,
+        "isVisible": true,
+        "title": {
+          "hi": "२. बालबोधः",
+          "gu": "૨. બાલબોધઃ",
+          "en": "2. Balabodha"
+        },
+        "subtitle": {
+          "hi": "द्वितीय ग्रंथ - नवदीक्षितों हेतु मार्गदर्शन",
+          "gu": "દ્વિતીય ગ્રંથ - નવદીક્ષિતો માટે માર્ગદર્શન",
+          "en": "2nd Treatise - Knowledge for Seekers"
+        },
+        "audioUrl": {
+          "hi": "audio/balabodha.mp3",
+          "gu": "audio/balabodha.mp3",
+          "en": "audio/balabodha.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_balabodha.json"
+      },
+      {
+        "id": "ch_sg_siddhanta_muktavali",
+        "order": 4,
+        "isVisible": true,
+        "title": {
+          "hi": "३. सिद्धान्तमुक्तावली",
+          "gu": "૩. સિદ્ધાન્તમુક્તાવલી",
+          "en": "3. Siddhanta Muktavali"
+        },
+        "subtitle": {
+          "hi": "तृतीय ग्रंथ - सेवा एवं ज्ञान का समन्वय",
+          "gu": "તૃતીય ગ્રંથ - સેવા અને જ્ઞાનનો સમન્વય",
+          "en": "3rd Treatise - The Pearl Necklace of Tenets"
+        },
+        "audioUrl": {
+          "hi": "audio/siddhanta_muktavali.mp3",
+          "gu": "audio/siddhanta_muktavali.mp3",
+          "en": "audio/siddhanta_muktavali.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_siddhanta_muktavali.json"
+      },
+      {
+        "id": "ch_sg_pushti_pravaha_maryada",
+        "order": 5,
+        "isVisible": true,
+        "title": {
+          "hi": "४. पुष्टिप्रवाहमर्यादाभेदः",
+          "gu": "૪. પુષ્ટિપ્રવાહમર્યાદાભેદઃ",
+          "en": "4. Pushti Pravaha Maryada Bheda"
+        },
+        "subtitle": {
+          "hi": "चतुर्थ ग्रंथ - तीन प्रकार के जीवों का भेद",
+          "gu": "ચતુર્થ ગ્રંથ - ત્રણ પ્રકારના જીવોનો ભેદ",
+          "en": "4th Treatise - Distinction of the Three Souls"
+        },
+        "audioUrl": {
+          "hi": "audio/pushti_pravaha_maryada.mp3",
+          "gu": "audio/pushti_pravaha_maryada.mp3",
+          "en": "audio/pushti_pravaha_maryada.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_pushti_pravaha_maryada.json"
+      },
+      {
+        "id": "ch_sg_siddhanta_rahasya",
+        "order": 6,
+        "isVisible": true,
+        "title": {
+          "hi": "५. सिद्धान्तरहस्यम्",
+          "gu": "૫. સિદ્ધાન્તરહસ્યમ્",
+          "en": "5. Siddhanta Rahasya"
+        },
+        "subtitle": {
+          "hi": "पंचम ग्रंथ - ब्रह्मसंबंध का रहस्य",
+          "gu": "પંચમ ગ્રંથ - બ્રહ્મસંબંધનું રહસ્ય",
+          "en": "5th Treatise - Secret of Dedication"
+        },
+        "audioUrl": {
+          "hi": "audio/siddhanta_rahasya.mp3",
+          "gu": "audio/siddhanta_rahasya.mp3",
+          "en": "audio/siddhanta_rahasya.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_siddhanta_rahasya.json"
+      },
+      {
+        "id": "ch_sg_navaratnam",
+        "order": 7,
+        "isVisible": true,
+        "title": {
+          "hi": "६. नवरत्नम्",
+          "gu": "૬. નવરત્નમ્",
+          "en": "6. Navaratnam"
+        },
+        "subtitle": {
+          "hi": "षष्ठ ग्रंथ - चिंता मुक्ति के नौ श्लोक",
+          "gu": "ષષ્ઠ ગ્રંથ - ચિંતા મુક્તિના નવ શ્લોક",
+          "en": "6th Treatise - The Nine Jewels of Surrender"
+        },
+        "audioUrl": {
+          "hi": "audio/navaratnam.mp3",
+          "gu": "audio/navaratnam.mp3",
+          "en": "audio/navaratnam.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_navaratnam.json"
+      },
+      {
+        "id": "ch_sg_antahkarana_prabodha",
+        "order": 8,
+        "isVisible": true,
+        "title": {
+          "hi": "७. अन्तःकरणप्रबोधः",
+          "gu": "૭. અન્તઃકરણપ્રબોધઃ",
+          "en": "7. Antahkarana Prabodha"
+        },
+        "subtitle": {
+          "hi": "सप्तम ग्रंथ - मन को भगवन्निष्ठ उपदेश",
+          "gu": "સપ્તમ ગ્રંથ - મનને ભગવન્નિષ્ઠ ઉપદેશ",
+          "en": "7th Treatise - Admonition to the Inner Heart"
+        },
+        "audioUrl": {
+          "hi": "audio/antahkarana_prabodha.mp3",
+          "gu": "audio/antahkarana_prabodha.mp3",
+          "en": "audio/antahkarana_prabodha.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_antahkarana_prabodha.json"
+      },
+      {
+        "id": "ch_sg_viveka_dhairyashraya",
+        "order": 9,
+        "isVisible": true,
+        "title": {
+          "hi": "८. विवेकधैर्याश्रयः",
+          "gu": "૮. વિવેકધૈર્યાશ્રયઃ",
+          "en": "8. Viveka Dhairyashraya"
+        },
+        "subtitle": {
+          "hi": "अष्टम ग्रंथ - विवेक, धैर्य और अनन्य आश्रय",
+          "gu": "અષ્ટમ ગ્રંથ - વિવેક, ધૈર્ય અને અનન્ય આશ્રય",
+          "en": "8th Treatise - Discernment, Patience & Refuge"
+        },
+        "audioUrl": {
+          "hi": "audio/viveka_dhairyashraya.mp3",
+          "gu": "audio/viveka_dhairyashraya.mp3",
+          "en": "audio/viveka_dhairyashraya.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_viveka_dhairyashraya.json"
+      },
+      {
+        "id": "ch_sg_krishnashraya",
+        "order": 10,
+        "isVisible": true,
+        "title": {
+          "hi": "९. कृष्णाश्रयः",
+          "gu": "૯. કૃષ્ણાશ્રયઃ",
+          "en": "9. Krishnashraya"
+        },
+        "subtitle": {
+          "hi": "नवम ग्रंथ - कलिकाल में केवल श्रीकृष्ण ही शरण",
+          "gu": "નવમ ગ્રંથ - કલિકાળમાં માત્ર શ્રીકૃષ્ણ જ શરણ",
+          "en": "9th Treatise - Refuge in Shri Krishna"
+        },
+        "audioUrl": {
+          "hi": "audio/krishnashraya.mp3",
+          "gu": "audio/krishnashraya.mp3",
+          "en": "audio/krishnashraya.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_krishnashraya.json"
+      },
+      {
+        "id": "ch_sg_chatuhshloki",
+        "order": 11,
+        "isVisible": true,
+        "title": {
+          "hi": "१०. चतुःश्लोकी",
+          "gu": "૧૦. ચતુઃશ્લોકી",
+          "en": "10. Chatuhshloki"
+        },
+        "subtitle": {
+          "hi": "दशम ग्रंथ - पुरुषार्थ एवं सर्वस्व समर्पण",
+          "gu": "દશમ ગ્રંથ - પુરુષાર્થ અને સર્વસ્વ સમર્પણ",
+          "en": "10th Treatise - The Fourfold Goal of Life"
+        },
+        "audioUrl": {
+          "hi": "audio/chatuhshloki.mp3",
+          "gu": "audio/chatuhshloki.mp3",
+          "en": "audio/chatuhshloki.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_chatuhshloki.json"
+      },
+      {
+        "id": "ch_sg_bhaktivardhini",
+        "order": 12,
+        "isVisible": true,
+        "title": {
+          "hi": "११. भक्तिवर्धिनी",
+          "gu": "૧૧. ભક્તિવર્ધિની",
+          "en": "11. Bhaktivardhini"
+        },
+        "subtitle": {
+          "hi": "एकादश ग्रंथ - प्रेम एवं भक्ति की वृद्धि के उपाय",
+          "gu": "એકાદશ ગ્રંથ - પ્રેમ અને ભક્તિની વૃદ્ધિના ઉપાય",
+          "en": "11th Treatise - Cultivating Divine Devotion"
+        },
+        "audioUrl": {
+          "hi": "audio/bhaktivardhini.mp3",
+          "gu": "audio/bhaktivardhini.mp3",
+          "en": "audio/bhaktivardhini.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_bhaktivardhini.json"
+      },
+      {
+        "id": "ch_sg_jalabheda",
+        "order": 13,
+        "isVisible": true,
+        "title": {
+          "hi": "१२. जलभेदः",
+          "gu": "૧૨. જલભેદઃ",
+          "en": "12. Jalabheda"
+        },
+        "subtitle": {
+          "hi": "द्वादश ग्रंथ - वक्ता एवं श्रोता के प्रकार",
+          "gu": "દ્વાદશ ગ્રંથ - વક્તા અને શ્રોતાના પ્રકાર",
+          "en": "12th Treatise - Differentiation of Speakers"
+        },
+        "audioUrl": {
+          "hi": "audio/jalabheda.mp3",
+          "gu": "audio/jalabheda.mp3",
+          "en": "audio/jalabheda.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_jalabheda.json"
+      },
+      {
+        "id": "ch_sg_panchapadyani",
+        "order": 14,
+        "isVisible": true,
+        "title": {
+          "hi": "१३. पञ्चपद्यानि",
+          "gu": "૧૩. પંચપદ્યાનિ",
+          "en": "13. Panchapadyani"
+        },
+        "subtitle": {
+          "hi": "त्रयोदश ग्रंथ - कथा-श्रवण का स्वरूप",
+          "gu": "ત્રયોદશ ગ્રંથ - કથા-શ્રવણનું સ્વરૂપ",
+          "en": "13th Treatise - The Five Verses on Discourse"
+        },
+        "audioUrl": {
+          "hi": "audio/panchapadyani.mp3",
+          "gu": "audio/panchapadyani.mp3",
+          "en": "audio/panchapadyani.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_panchapadyani.json"
+      },
+      {
+        "id": "ch_sg_sannyasa_nirnaya",
+        "order": 15,
+        "isVisible": true,
+        "title": {
+          "hi": "१४. संन्यासनिर्णयः",
+          "gu": "૧૪. સંન્યાસનિર્ણયઃ",
+          "en": "14. Sannyasa Nirnaya"
+        },
+        "subtitle": {
+          "hi": "चतुर्दश ग्रंथ - विरह भक्ति हेतु संन्यास का निर्णय",
+          "gu": "ચતુર્દશ ગ્રંથ - વિરહ ભક્તિ માટે સંન્યાસનો નિર્ણય",
+          "en": "14th Treatise - Determination on Renunciation"
+        },
+        "audioUrl": {
+          "hi": "audio/sannyasa_nirnaya.mp3",
+          "gu": "audio/sannyasa_nirnaya.mp3",
+          "en": "audio/sannyasa_nirnaya.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_sannyasa_nirnaya.json"
+      },
+      {
+        "id": "ch_sg_nirodha_lakshanam",
+        "order": 16,
+        "isVisible": true,
+        "title": {
+          "hi": "१५. निरोधलक्षणम्",
+          "gu": "૧૫. નિરોધલક્ષણમ્",
+          "en": "15. Nirodha Lakshanam"
+        },
+        "subtitle": {
+          "hi": "पंचदश ग्रंथ - प्रपंच विस्मृति और भगवदासक्ति",
+          "gu": "પંચદશ ગ્રંથ - પ્રપંચ વિસ્મૃતિ અને ભગવદાસક્તિ",
+          "en": "15th Treatise - Characteristics of Total Absorption"
+        },
+        "audioUrl": {
+          "hi": "audio/nirodha_lakshanam.mp3",
+          "gu": "audio/nirodha_lakshanam.mp3",
+          "en": "audio/nirodha_lakshanam.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_nirodha_lakshanam.json"
+      },
+      {
+        "id": "ch_sg_seva_phalam",
+        "order": 17,
+        "isVisible": true,
+        "title": {
+          "hi": "१६. सेवाफलम्",
+          "gu": "૧૬. સેવાફલમ્",
+          "en": "16. Seva Phalam"
+        },
+        "subtitle": {
+          "hi": "षोडश ग्रंथ - मानसी सेवा एवं उसका परम फल",
+          "gu": "ષોડશ ગ્રંથ - માનસી સેવા અને તેનું પરમ ફળ",
+          "en": "16th Treatise - Fruit of Loving Devotional Service"
+        },
+        "audioUrl": {
+          "hi": "audio/seva_phalam.mp3",
+          "gu": "audio/seva_phalam.mp3",
+          "en": "audio/seva_phalam.mp3"
+        },
+        "contentUrl": "chapters/book_shodash_granth/ch_sg_seva_phalam.json"
+      }
+    ]
+  }
+]

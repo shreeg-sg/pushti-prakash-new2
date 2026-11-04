@@ -16,7 +16,7 @@
       "minute": 30,
       "repeatsDaily": true,
       "targetBookId": "book_shodash_granth",
-      "targetChapterId": "ch_yamunashtakam"
+      "targetChapterId": "ch_sg_yamunashtakam"
     },
     {
       "id": 102,
@@ -52,7 +52,7 @@
       "hour": 6,
       "minute": 0,
       "targetBookId": "book_shodash_granth",
-      "targetChapterId": "ch_yamunashtakam"
+      "targetChapterId": "ch_sg_yamunashtakam"
     }
   ]
   
