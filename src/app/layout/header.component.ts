@@ -45,9 +45,8 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
   template: `
     <ion-header class="ion-no-border">
       <ion-toolbar color="primary" class="main-header-toolbar">
-        <!-- Start Buttons: Menu or Back Navigation -->
         <ion-buttons slot="start">
-          <ion-menu-button autoHide="false"></ion-menu-button>
+          <ion-menu-button autoHide="true"></ion-menu-button>
           <ion-button
             *ngIf="shouldShowBack$ | async"
             (click)="onBackClick()"
@@ -56,16 +55,13 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
           </ion-button>
         </ion-buttons>
 
-        <!-- Center Dynamic Title: Wrapped up to max 2 lines with ellipsis, responsive font -->
         <ion-title class="header-dynamic-title">
           {{ pageTitle || (resolvedRouteTitle$ | async) }}
         </ion-title>
 
-        <!-- End Buttons: Custom actions (Bookmark ⭐) + Single Merged Settings Trigger -->
         <ion-buttons slot="end">
           <ng-content select="[headerEndActions]"></ng-content>
 
-          <!-- Single Merged Settings Trigger Button -->
           <ion-button
             class="settings-trigger-btn"
             (click)="openSettingsPopover($event)"
@@ -73,14 +69,12 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
             <ion-icon slot="icon-only" name="options-outline"></ion-icon>
           </ion-button>
 
-          <!-- Unified Settings Popover (Sized comfortably with no word-breaks) -->
           <ion-popover
             [isOpen]="isSettingsPopoverOpen"
             [event]="settingsPopoverEvent"
             (didDismiss)="isSettingsPopoverOpen = false"
             class="header-settings-popover">
             <ng-template>
-              <!-- 1st Row: Header Bar with Title and Close Button -->
               <div class="popover-first-row">
                 <span class="popover-heading">
                   {{ (uiText$ | async)?.['settings_title'] || 'Preferences' }}
@@ -95,7 +89,6 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
               </div>
 
               <div class="popover-body-content">
-                <!-- Section 1: Language Switcher (No word-breaks for 'English') -->
                 <div class="popover-section" *ngIf="(enabledLanguages$ | async) as languages">
                   <div class="section-label-row">
                     <ion-icon name="language-outline" color="primary"></ion-icon>
@@ -115,7 +108,6 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
                   </div>
                 </div>
 
-                <!-- Section 2: Font Size Scaling (No word-breaks for 'Medium') -->
                 <div class="popover-section">
                   <div class="section-label-row">
                     <ion-icon name="text-outline" color="primary"></ion-icon>
@@ -159,7 +151,6 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
       --min-height: 56px;
       padding: 0 4px;
     }
-    /* Max 2 line header with natural word wrap and clean ellipsis */
     ion-title.header-dynamic-title {
       padding: 0 4px;
       position: relative;
@@ -242,13 +233,11 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
       letter-spacing: 0.6px;
       color: var(--ion-color-medium, #666666);
     }
-    /* Grid layout with minmax width ensures buttons fit comfortably */
     .pill-group {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
       gap: 8px;
     }
-    /* Responsive pill buttons with white-space: nowrap so 'English' and 'Medium' never break */
     .pill-btn {
       width: 100%;
       padding: 9px 4px;

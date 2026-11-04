@@ -85,17 +85,28 @@ jobs:
         run: npm run build -- --configuration=production
 
       - name: Sync Capacitor Android Project
+        env:
+          APP_NAME: ${{ inputs.app_name }}
         run: |
           if [ ! -d "android" ]; then
             npx cap add android
           fi
           npx cap sync android
           if [ -f "android/app/src/main/res/values/strings.xml" ]; then
-            sed -i "s|<string name=\"app_name\">.*</string>|<string name=\"app_name\">${{ inputs.app_name }}</string>|g" android/app/src/main/res/values/strings.xml
-            sed -i "s|<string name=\"title_activity_main\">.*</string>|<string name=\"title_activity_main\">${{ inputs.app_name }}</string>|g" android/app/src/main/res/values/strings.xml
+            python3 -c "
+import os, re
+path = 'android/app/src/main/res/values/strings.xml'
+app_name = os.environ.get('APP_NAME', 'PushtiPrakash')
+if os.path.exists(path):
+    with open(path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    content = re.sub(r'<string name=\"app_name\">.*?</string>', f'<string name=\"app_name\">{app_name}</string>', content)
+    content = re.sub(r'<string name=\"title_activity_main\">.*?</string>', f'<string name=\"title_activity_main\">{app_name}</string>', content)
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(content)
+"
           fi
 
-      # Update Google Play Version Code and Version Name in build.gradle
       - name: Stamp Version Code & Name in build.gradle
         run: |
           GRADLE_FILE="android/app/build.gradle"
@@ -105,7 +116,6 @@ jobs:
             echo "Updated build.gradle with versionCode ${{ inputs.version_code }} and versionName ${{ inputs.build_version }}"
           fi
 
-      # Scales all launcher icons to 68% centered with safe-zone margin
       - name: Stamp Android Launcher App Icon from Logo Location
         run: |
           mkdir -p /tmp
@@ -124,39 +134,33 @@ jobs:
               size=$(echo $res | cut -d: -f2)
               dir="android/app/src/main/res/mipmap-${folder}"
               mkdir -p "$dir"
-              
               icon_size=$(( size * 68 / 100 ))
               convert /tmp/logo.png -resize "${icon_size}x${icon_size}" -gravity center -background none -extent "${size}x${size}" "$dir/ic_launcher.png" || true
               convert /tmp/logo.png -resize "${icon_size}x${icon_size}" -gravity center -background none -extent "${size}x${size}" "$dir/ic_launcher_round.png" || true
               convert /tmp/logo.png -resize "${icon_size}x${icon_size}" -gravity center -background none -extent "${size}x${size}" "$dir/ic_launcher_foreground.png" || true
             done
-            echo "Successfully generated Android launcher icons scaled at 68%!"
+            echo "Successfully generated Android adaptive and legacy launcher icons scaled at 68%!"
           else
-            echo "Warning: Logo image not found, keeping default icon."
+            echo "Warning: Logo PNG not found, defaulting to template icons."
           fi
 
-      # Compiles BOTH Installable APK and Google Play Store Release Bundle (AAB)
-      - name: Build Android APK and Play Store AAB
-        working-directory: ./android
+      - name: Build Android Release APK and Android App Bundle (AAB)
         run: |
+          cd android
           chmod +x gradlew
-          ./gradlew assembleDebug bundleRelease
+          ./gradlew assembleRelease
+          ./gradlew bundleRelease
 
-      # Package both outputs into a clean distribution folder
-      - name: Package Deliverables (APK & AAB)
-        run: |
-          mkdir -p dist-android
-          # 1. Installable APK (for testing and direct delivery)
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
-            "dist-android/${{ inputs.client_key }}-v${{ inputs.build_version }}.apk"
-
-          # 2. Google Play Store Bundle (.aab)
-          cp android/app/build/outputs/bundle/release/app-release.aab \
-            "dist-android/${{ inputs.client_key }}-v${{ inputs.build_version }}-b${{ inputs.version_code }}-playstore.aab"
-
-      - name: Upload Android Build Artifacts (APK + AAB)
+      - name: Upload Unsigned Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.client_key }}-v${{ inputs.build_version }}-android-bundle
-          path: dist-android/
-          retention-days: 30
+          name: ${{ inputs.client_key }}-release-apk-v${{ inputs.build_version }}
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 14
+
+      - name: Upload Unsigned Google Play AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.client_key }}-release-aab-v${{ inputs.build_version }}
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 14

@@ -88,11 +88,10 @@ jobs:
         run: |
           PLIST_PATH="ios/App/App/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
-            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${APP_NAME}" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${APP_NAME}" "$PLIST_PATH"
-            /usr/libexec/PlistBuddy -c "Set :CFBundleName ${APP_NAME}" "$PLIST_PATH" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName \"${APP_NAME}\"" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string \"${APP_NAME}\"" "$PLIST_PATH"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleName \"${APP_NAME}\"" "$PLIST_PATH" || true
           fi
 
-      # Scales iOS AppIcon to 68% centered on solid background (No transparency per Apple App Store rules)
       - name: Stamp iOS App Icon from Client Logo
         run: |
           mkdir -p /tmp
@@ -127,7 +126,6 @@ if os.path.exists(logo_path):
     for fname, size in targets.items():
         fg_size = int(size * 0.68)
         resized = img.resize((fg_size, fg_size), Image.Resampling.LANCZOS)
-        # Solid background (#FFFDF9) without alpha channel for Apple App Store compliance
         canvas = Image.new('RGBA', (size, size), (255, 253, 249, 255))
         offset = ((size - fg_size) // 2, (size - fg_size) // 2)
         canvas.paste(resized, offset, mask=resized)
@@ -137,42 +135,23 @@ if os.path.exists(logo_path):
             echo '{"images":[{"idiom":"universal","platform":"ios","size":"1024x1024"},{"idiom":"universal","platform":"ios","size":"1024x1024","filename":"AppIcon-512@2x.png"}],"info":{"author":"xcode","version":1}}' > "$ICON_DIR/Contents.json"
             echo "Successfully generated iOS AppIcon catalog scaled at 68%!"
           else
-            echo "Warning: Logo PNG not found, default icon retained."
+            echo "Warning: Logo PNG not found, defaulting to template icons."
           fi
 
-      - name: Build iOS Archive with Xcode
-        working-directory: ./ios/App
+      - name: Build and Archive iOS Project
         run: |
-          xcodebuild clean archive \
-            -workspace App.xcworkspace \
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
+            -destination 'generic/platform=iOS' \
             -archivePath build/App.xcarchive \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            archive \
+            CODE_SIGNING_ALLOWED=NO
 
-      - name: Export iOS IPA Package
-        working-directory: ./ios/App
-        run: |
-          mkdir -p build/Payload
-          cp -r build/App.xcarchive/Products/Applications/App.app build/Payload/
-          cd build
-          zip -r "${{ inputs.client_key }}-v${{ inputs.build_version }}.ipa" Payload/
-          cd ../../..
-          mkdir -p dist-ios
-          cp ios/App/build/${{ inputs.client_key }}-v${{ inputs.build_version }}.ipa dist-ios/
-
-      - name: Zip Complete iOS Xcode Archive
-        run: |
-          cd ios/App/build
-          zip -r App.xcarchive.zip App.xcarchive/
-          cd ../../..
-          cp ios/App/build/App.xcarchive.zip dist-ios/
-
-      - name: Upload iOS Application IPA & Archive Artifacts
+      - name: Upload iOS Xcode Archive Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.client_key }}-v${{ inputs.build_version }}-ios-bundle
-          path: dist-ios/
-          retention-days: 30
+          name: ${{ inputs.client_key }}-ios-xcarchive-${{ inputs.build_version }}
+          path: ios/App/build/App.xcarchive
+          retention-days: 14

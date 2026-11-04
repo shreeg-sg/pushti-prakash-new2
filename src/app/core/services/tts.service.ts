@@ -32,7 +32,6 @@ export interface ChapterMediaMetadata {
   providedIn: 'root'
 })
 export class TtsService implements OnDestroy {
-  // Single persistent audio element reused across all chapters to preserve mobile audio permissions
   private readonly audioElement: HTMLAudioElement = new Audio();
   private ttsChunks: string[] = [];
   private currentChunkIndex = 0;
@@ -90,7 +89,6 @@ export class TtsService implements OnDestroy {
     });
 
     audio.addEventListener('error', () => {
-      // Automatic case correction: If uppercase failed, try lowercase automatically
       if (this.currentPlayableUrl && /[A-Z]/.test(this.currentPlayableUrl) && !this.hasRetriedLowercase) {
         this.hasRetriedLowercase = true;
         const lowerUrl = this.currentPlayableUrl.toLowerCase();
@@ -159,7 +157,6 @@ export class TtsService implements OnDestroy {
     this.audioElement.playbackRate = this.stateSubject.value.playbackRate;
     this.audioElement.load();
 
-    // Auto-continue playing if user was already listening
     if (autoPlay) {
       this.requestScreenWakeLock().catch(() => {});
       try {
@@ -475,8 +472,10 @@ export class TtsService implements OnDestroy {
   }
 
   private splitTranscriptIntoChunks(transcript: string): string[] {
+    // Cross-platform chunk boundary splitting (safe for all iOS WebKit and Android versions without RegExp lookbehind)
     return transcript
-      .split(/\n+|(?<=[।॥.!?])\s+/g)
+      .replace(/([।॥.!?])\s+/g, '$1\n')
+      .split(/\n+/g)
       .map(s => s.trim())
       .filter(s => s.length > 0);
   }

@@ -63,20 +63,17 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     </app-header>
 
     <ion-content class="ion-padding reader-transcript-container">
-      <!-- Watermark Background Emblem (12% opacity behind stotras) -->
       <div class="watermark-overlay" aria-hidden="true"></div>
 
       <div class="reader-body" *ngIf="activeBook && activeChapter">
         <div class="book-breadcrumb">{{ localize(activeBook.title) }}</div>
         <h1 class="chapter-heading">{{ localize(activeChapter.title) }}</h1>
 
-        <!-- Loading spinner while on-demand transcript loads from split JSON -->
         <div class="transcript-loading" *ngIf="isLoadingTranscript">
           <ion-spinner name="crescent" color="primary"></ion-spinner>
           <p class="loading-label">Loading sacred text...</p>
         </div>
 
-        <!-- Sacred Transcript: HTML formatting + Normal 1 Line Spacing -->
         <div class="transcript-content" *ngIf="!isLoadingTranscript">
           <p
             *ngFor="let paragraph of transcriptParagraphs"
@@ -88,9 +85,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       </div>
     </ion-content>
 
-    <!-- Floating Dock Wrapper: Sticky Prev/Next Stepper Row + Audio Controls -->
     <div class="floating-dock-wrapper" *ngIf="playerState$ | async as state">
-      <!-- Sticky Chapter Stepper Bar Just Above Audio Controls -->
       <div class="sticky-stepper-bar">
         <ion-button
           fill="solid"
@@ -115,7 +110,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
         </ion-button>
       </div>
 
-      <!-- Floating Audio/TTS Player Dock -->
       <div class="floating-audio-dock">
         <div class="player-meta-row">
           <ion-badge [color]="state.mode === 'audio' ? 'secondary' : 'tertiary'" class="mode-badge">
@@ -146,7 +140,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
         </ion-range>
 
         <div class="player-controls-row">
-          <!-- Speed Picker with Clean Popover List -->
           <div class="speed-picker-wrapper">
             <ion-icon name="speedometer-outline" class="speed-icon"></ion-icon>
             <ion-select
@@ -165,7 +158,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
             </ion-select>
           </div>
 
-          <!-- Primary Play/Pause Button -->
           <div class="primary-transport">
             <ion-button
               shape="round"
@@ -188,7 +180,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     </div>
   `,
   styles: [`
-    /* Anti-Copy & Text-Protection Shield */
     .reader-transcript-container,
     .reader-body,
     .transcript-content,
@@ -225,7 +216,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     .reader-body {
       max-width: 780px;
       margin: 0 auto;
-      padding-bottom: 215px; /* Ensures text never hides behind the sticky stepper + player dock */
+      padding-bottom: 215px;
       position: relative;
       z-index: 1;
     }
@@ -263,10 +254,10 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       font-weight: 500;
     }
 
-    /* Scripture Paragraphs: Normal 1 Line Spacing & HTML formatting */
+    /* 1.45 Line Height protects Indic matras and vowel signs from clipping */
     .transcript-paragraph {
       font-size: var(--app-reader-font-size, 1.05rem);
-      line-height: 1.0 !important; /* Normal 1 line spacing */
+      line-height: 1.45 !important;
       margin-bottom: 14px;
       white-space: pre-line;
       padding: 6px 8px;
@@ -287,7 +278,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       border-left: 3px solid var(--ion-color-primary);
     }
 
-    /* Floating Dock Wrapper containing Sticky Stepper & Audio Player */
     .floating-dock-wrapper {
       position: fixed;
       left: 12px;
@@ -301,7 +291,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       gap: 8px;
     }
 
-    /* Sticky Stepper Bar Just Above Audio Controls */
     .sticky-stepper-bar {
       display: flex;
       align-items: center;
@@ -318,18 +307,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       font-weight: 700;
       font-size: 0.82rem;
       height: 32px;
-    }
-
-    .stepper-title-indicator {
-      font-size: 0.82rem;
-      font-weight: 700;
-      color: var(--ion-color-primary);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      max-width: 170px;
-      padding: 0 8px;
-      text-align: center;
     }
 
     .floating-audio-dock {
@@ -440,7 +417,6 @@ export class ReaderPage implements OnInit, OnDestroy {
   private chapterId = '';
   private routeMediaSub?: Subscription;
 
-  // Intercept and block all mobile long-press menus, clipboard copying, cutting, and dragging
   @HostListener('contextmenu', ['$event'])
   @HostListener('copy', ['$event'])
   @HostListener('cut', ['$event'])
@@ -495,7 +471,6 @@ export class ReaderPage implements OnInit, OnDestroy {
         this.activeChapter = resolved.chapter;
         this.activeChapterTitle = this.dataService.localizeField(resolved.chapter.title, lang);
 
-        // Loads on-demand modular transcript from split JSONs (chapters/{bookId}/{chapterId}.json)
         this.isLoadingTranscript = true;
         const transcriptMap = await this.dataService.loadChapterTranscript(this.bookId, resolved.chapter);
         this.isLoadingTranscript = false;
@@ -576,7 +551,6 @@ export class ReaderPage implements OnInit, OnDestroy {
   public async goToSiblingChapter(targetChapterId?: string): Promise<void> {
     if (!targetChapterId || !this.bookId) return;
 
-    // Check if music was actively playing
     const currentState = await firstValueFrom(this.playerState$);
     this.shouldAutoPlayNext = currentState.isPlaying;
 
