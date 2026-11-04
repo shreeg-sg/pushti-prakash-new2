@@ -77,6 +77,7 @@ import { Book } from '../../core/models/app-config.model';
               class="book-card"
               [style.--book-watermark]="'url(' + getCoverWatermarkUrl(book) + ')'"
               (click)="openBookChapters(book.id)">
+              <!-- Dynamic Cover Photo Watermark Background (20% Opacity Full Card) -->
               <div class="book-watermark-overlay" aria-hidden="true"></div>
 
               <div class="book-card-content">
@@ -85,6 +86,7 @@ import { Book } from '../../core/models/app-config.model';
                   <ion-icon name="arrow-forward-outline" class="action-arrow"></ion-icon>
                 </div>
                 
+                <!-- 2-Line Clamped Description/Subtitle -->
                 <p *ngIf="book.subtitle" class="book-card-subtitle">{{ localize(book.subtitle) }}</p>
 
                 <div class="chapter-count-badge">
@@ -130,6 +132,7 @@ import { Book } from '../../core/models/app-config.model';
     .sticky-notification-banner.banner-hidden {
       transform: translateY(-100%);
       max-height: 0;
+      height: 0;
       padding-top: 0;
       padding-bottom: 0;
       opacity: 0;
@@ -185,6 +188,7 @@ import { Book } from '../../core/models/app-config.model';
       padding-bottom: 0;
     }
 
+    /* 25% viewport height minus grid/gutter vertical clearance */
     .book-card {
       position: relative;
       border-radius: 18px;
@@ -196,6 +200,7 @@ import { Book } from '../../core/models/app-config.model';
       border: 1px solid rgba(var(--ion-color-primary-rgb), 0.18);
       cursor: pointer;
 
+      /* Fits 3 cards in view */
       height: calc(25vh - 12px);
       min-height: 140px;
       display: flex;
@@ -207,6 +212,7 @@ import { Book } from '../../core/models/app-config.model';
       }
     }
 
+    /* Cover Photo Watermark: covers entire card at 20% opacity */
     .book-watermark-overlay {
       position: absolute;
       inset: 0;
@@ -256,6 +262,7 @@ import { Book } from '../../core/models/app-config.model';
       flex-shrink: 0;
     }
 
+    /* 2-line clamp for description/subtitle */
     .book-card-subtitle {
       margin: 4px 0 8px 0;
       font-size: 0.85rem;
