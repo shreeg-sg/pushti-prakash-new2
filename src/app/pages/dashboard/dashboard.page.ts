@@ -40,6 +40,7 @@ import { Book } from '../../core/models/app-config.model';
   template: `
     <app-header [showBackButton]="false"></app-header>
 
+    <!-- Sticky Notification Banner (Fits content height, max 25vh, hides on scroll down) -->
     <div
       class="sticky-notification-banner"
       *ngIf="(updateBanner$ | async) as bannerText"
@@ -52,6 +53,7 @@ import { Book } from '../../core/models/app-config.model';
       [scrollEvents]="true"
       (ionScroll)="onDashboardScroll($event)"
       class="ion-padding dashboard-content">
+      <!-- Direct Watermark Binding (15% opacity behind book grid) -->
       <div
         class="watermark-overlay"
         *ngIf="watermarkUrl$ | async as wmUrl"
@@ -63,6 +65,7 @@ import { Book } from '../../core/models/app-config.model';
         <ion-refresher-content></ion-refresher-content>
       </ion-refresher>
 
+      <!-- Book Cards Grid -->
       <ion-grid fixed class="books-grid">
         <ion-row *ngIf="visibleBooks$ | async as books">
           <ion-col
@@ -111,7 +114,9 @@ import { Book } from '../../core/models/app-config.model';
       font-size: 0.92rem;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 
-      height: 25vh;
+      /* Automatically wraps content height, capped at strict 25vh max with smooth scrolling */
+      height: auto;
+      min-height: fit-content;
       max-height: 25vh;
       box-sizing: border-box;
       overflow-y: auto;
@@ -125,12 +130,12 @@ import { Book } from '../../core/models/app-config.model';
     .sticky-notification-banner.banner-hidden {
       transform: translateY(-100%);
       max-height: 0;
-      height: 0;
       padding-top: 0;
       padding-bottom: 0;
       opacity: 0;
       pointer-events: none;
       border-bottom-width: 0;
+      overflow: hidden;
     }
 
     .banner-icon {
