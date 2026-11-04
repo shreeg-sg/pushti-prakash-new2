@@ -50,14 +50,13 @@ export interface Chapter {
   order: number;
   isVisible: boolean;
   title: LocalizedStringMap;
+  subtitle?: LocalizedStringMap;
   audioUrl?: LocalizedStringMap;
   durationSeconds?: number;
-  // Supports both embedded and modular on-demand transcript loading
   transcript?: LocalizedStringMap;
-  contentUrl?: string; // Fixes: Property 'contentUrl' does not exist on type 'Chapter'
+  contentUrl?: string;
 }
 
-// Fixes: Module has no exported member 'ChapterContentPayload'
 export interface ChapterContentPayload {
   id: string;
   bookId?: string;
@@ -87,10 +86,20 @@ export interface NotificationSchedule {
   targetChapterId?: string;
 }
 
+export interface BannerItem {
+  id?: string;
+  date?: string;          // YYYY-MM-DD
+  startDate?: string;     // YYYY-MM-DD
+  endDate?: string;       // YYYY-MM-DD
+  isEnabled?: boolean;
+  isDefault?: boolean;
+  message: LocalizedStringMap;
+}
+
 export interface AppConfigPayload {
   schemaVersion: number;
   lastUpdatedIso: string;
-  updateBannerMessage?: LocalizedStringMap;
+  updateBannerMessage?: LocalizedStringMap | BannerItem[] | any;
   app_identity: AppIdentity;
   supportedLanguages: SupportedLanguage[];
   ui_translations: UiTranslations;
@@ -98,3 +107,6 @@ export interface AppConfigPayload {
   books: Book[];
   notification_schedules?: NotificationSchedule[];
 }
+
+// Alias for backwards & forwards compatibility
+export type AppConfig = AppConfigPayload;

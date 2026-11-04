@@ -14,9 +14,11 @@ import { addIcons } from 'ionicons';
 import {
   sparklesOutline,
   bookOutline,
-  arrowForwardOutline
+  arrowForwardOutline,
+  searchOutline
 } from 'ionicons/icons';
-import { Observable, Subscription } from 'rxjs';
+import { Observable, Subscription, BehaviorSubject, combineLatest } from 'rxjs';
+import { map } from 'rxjs/operators';
 
 import { HeaderComponent } from '../../layout/header.component';
 import { DataService } from '../../core/services/data.service';
@@ -38,9 +40,13 @@ import { Book } from '../../core/models/app-config.model';
     IonIcon
   ],
   template: `
-    <app-header [showBackButton]="false"></app-header>
+    <app-header
+      [showBackButton]="false"
+      [showSearch]="true"
+      [searchPlaceholder]="getSearchPlaceholder()"
+      (searchChange)="onSearchQueryChange($event)">
+    </app-header>
 
-    <!-- Sticky Notification Banner (Fits content height, max 25vh, hides on scroll down) -->
     <div
       class="sticky-notification-banner"
       *ngIf="(updateBanner$ | async) as bannerText"
@@ -53,7 +59,6 @@ import { Book } from '../../core/models/app-config.model';
       [scrollEvents]="true"
       (ionScroll)="onDashboardScroll($event)"
       class="ion-padding dashboard-content">
-      <!-- Direct Watermark Binding (15% opacity behind book grid) -->
       <div
         class="watermark-overlay"
         *ngIf="watermarkUrl$ | async as wmUrl"
@@ -65,9 +70,8 @@ import { Book } from '../../core/models/app-config.model';
         <ion-refresher-content></ion-refresher-content>
       </ion-refresher>
 
-      <!-- Book Cards Grid -->
       <ion-grid fixed class="books-grid">
-        <ion-row *ngIf="visibleBooks$ | async as books">
+        <ion-row *ngIf="filteredBooks$ | async as books">
           <ion-col
             size="12"
             sizeMd="6"
@@ -94,6 +98,14 @@ import { Book } from '../../core/models/app-config.model';
               </div>
             </div>
           </ion-col>
+
+          <ion-col size="12" *ngIf="books.length === 0" class="no-books-card ion-text-center">
+            <div class="empty-search-box">
+              <ion-icon name="book-outline" class="empty-book-icon"></ion-icon>
+              <h3 class="empty-search-title">No books match "{{ currentSearchQuery }}"</h3>
+              <p class="empty-search-hint">Try searching with a different title in Hindi, Gujarati, or English</p>
+            </div>
+          </ion-col>
         </ion-row>
       </ion-grid>
     </ion-content>
@@ -114,7 +126,6 @@ import { Book } from '../../core/models/app-config.model';
       font-size: 0.92rem;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 
-      /* Automatically wraps content height, capped at strict 25vh max with smooth scrolling */
       height: auto;
       min-height: fit-content;
       max-height: 25vh;
@@ -149,14 +160,6 @@ import { Book } from '../../core/models/app-config.model';
       flex: 1;
       line-height: 1.45;
       white-space: pre-line;
-    }
-
-    .banner-text b, .banner-text strong {
-      font-weight: 700;
-    }
-
-    .banner-text i, .banner-text em {
-      font-style: italic;
     }
 
     .dashboard-content {
@@ -282,6 +285,32 @@ import { Book } from '../../core/models/app-config.model';
       font-size: 0.78rem;
       font-weight: 700;
     }
+
+    .empty-search-box {
+      padding: 36px 16px;
+      margin: 20px auto;
+      max-width: 440px;
+    }
+
+    .empty-book-icon {
+      font-size: 3.5rem;
+      color: var(--ion-color-medium);
+      opacity: 0.6;
+      margin-bottom: 12px;
+    }
+
+    .empty-search-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--ion-text-color);
+      margin: 0 0 6px 0;
+    }
+
+    .empty-search-hint {
+      font-size: 0.88rem;
+      color: var(--ion-color-medium);
+      margin: 0;
+    }
   `]
 })
 export class DashboardPage implements OnInit, OnDestroy {
@@ -299,6 +328,25 @@ export class DashboardPage implements OnInit, OnDestroy {
   private hasBooks = false;
   private currentLang = 'hi';
 
+  public currentSearchQuery = '';
+  private searchSubject = new BehaviorSubject<string>('');
+
+  public filteredBooks$: Observable<Book[]> = combineLatest([
+    this.dataService.visibleBooks$,
+    this.searchSubject
+  ]).pipe(
+    map(([books, query]) => {
+      const q = (query || '').trim().toLowerCase();
+      if (!q) return books;
+      return books.filter(book => {
+        const titleMatch = Object.values(book.title || {}).some(t => (t || '').toLowerCase().includes(q));
+        const subtitleMatch = book.subtitle ? Object.values(book.subtitle).some(s => (s || '').toLowerCase().includes(q)) : false;
+        const idMatch = (book.id || '').toLowerCase().includes(q);
+        return titleMatch || subtitleMatch || idMatch;
+      });
+    })
+  );
+
   private langSub?: Subscription;
   private booksSub?: Subscription;
 
@@ -306,7 +354,8 @@ export class DashboardPage implements OnInit, OnDestroy {
     addIcons({
       sparklesOutline,
       bookOutline,
-      arrowForwardOutline
+      arrowForwardOutline,
+      searchOutline
     });
   }
 
@@ -315,12 +364,27 @@ export class DashboardPage implements OnInit, OnDestroy {
       this.currentLang = lang;
     });
 
-    this.booksSub = this.visibleBooks$.subscribe(books => {
+    this.booksSub = this.filteredBooks$.subscribe(books => {
       this.hasBooks = !!(books && books.length > 0);
       if (!this.hasBooks) {
         this.isBannerHidden = false;
       }
     });
+  }
+
+  public onSearchQueryChange(query: string): void {
+    this.currentSearchQuery = query;
+    this.searchSubject.next(query);
+  }
+
+  public getSearchPlaceholder(): string {
+    const map: Record<string, string> = {
+      hi: 'ग्रंथ / पुस्तकें खोजें...',
+      gu: 'ગ્રંથો / પુસ્તકો શોધો...',
+      mr: 'पुस्तके शोधा...',
+      en: 'Search books...'
+    };
+    return map[this.currentLang] || 'Search books...';
   }
 
   public getCoverWatermarkUrl(book: Book): string {
