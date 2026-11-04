@@ -40,18 +40,18 @@
       "en": "Select Font Size"
     },
     "font_small": {
-      "hi": "छोटा (Small)",
-      "gu": "નાનું (Small)",
+      "hi": "छोटा",
+      "gu": "નાનું",
       "en": "Small"
     },
     "font_medium": {
-      "hi": "मध्यम (Medium)",
-      "gu": "મધ્યમ (Medium)",
+      "hi": "मध्यम",
+      "gu": "મધ્યમ",
       "en": "Medium"
     },
     "font_large": {
-      "hi": "बड़ा (Large)",
-      "gu": "મોટું (Large)",
+      "hi": "बड़ा",
+      "gu": "મોટું",
       "en": "Large"
     },
     "audio_playing_recorded": {
@@ -80,8 +80,8 @@
       "en": "No chapters bookmarked yet."
     },
     "feedback_cta": {
-      "hi": "अपना सुझाव दें (Feedback)",
-      "gu": "તમારો અભિપ્રાય આપો (Feedback)",
+      "hi": "अपना सुझाव दें",
+      "gu": "તમારો અભિપ્રાય આપો",
       "en": "Submit Feedback"
     },
     "double_tap_exit": {
