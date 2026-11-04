@@ -65,7 +65,7 @@ import { Book } from '../../core/models/app-config.model';
         <ion-refresher-content></ion-refresher-content>
       </ion-refresher>
 
-      <!-- Book Cards (Max 15% Viewport Height with Cover Photo Watermark) -->
+      <!-- Book Cards Grid -->
       <ion-grid fixed class="books-grid">
         <ion-row *ngIf="visibleBooks$ | async as books">
           <ion-col
@@ -77,7 +77,7 @@ import { Book } from '../../core/models/app-config.model';
               class="book-card"
               [style.--book-watermark]="'url(' + getCoverWatermarkUrl(book) + ')'"
               (click)="openBookChapters(book.id)">
-              <!-- Dynamic Cover Photo Watermark Background -->
+              <!-- Dynamic Cover Photo Watermark Background (20% Opacity Full Card) -->
               <div class="book-watermark-overlay" aria-hidden="true"></div>
 
               <!-- Card Content Floating on Top of Watermark -->
@@ -86,6 +86,8 @@ import { Book } from '../../core/models/app-config.model';
                   <h2 class="book-card-title">{{ localize(book.title) }}</h2>
                   <ion-icon name="arrow-forward-outline" class="action-arrow"></ion-icon>
                 </div>
+                
+                <!-- 2-Line Clamped Description/Subtitle -->
                 <p *ngIf="book.subtitle" class="book-card-subtitle">{{ localize(book.subtitle) }}</p>
 
                 <div class="chapter-count-badge">
@@ -115,7 +117,9 @@ import { Book } from '../../core/models/app-config.model';
       font-size: 0.92rem;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 
+      height: 25vh;
       max-height: 25vh;
+      box-sizing: border-box;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
 
@@ -127,6 +131,7 @@ import { Book } from '../../core/models/app-config.model';
     .sticky-notification-banner.banner-hidden {
       transform: translateY(-100%);
       max-height: 0;
+      height: 0;
       padding-top: 0;
       padding-bottom: 0;
       opacity: 0;
@@ -177,24 +182,25 @@ import { Book } from '../../core/models/app-config.model';
     .books-grid {
       position: relative;
       z-index: 1;
+      padding-top: 0;
+      padding-bottom: 0;
     }
 
-    /* Requirement: 15% Viewport Height Max with Cover Photo Watermark */
+    /* 25% viewport height minus grid/gutter vertical clearance */
     .book-card {
       position: relative;
       border-radius: 18px;
       overflow: hidden;
-      margin: 8px 0;
+      margin: 6px 0;
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
       transition: transform 0.22s ease, box-shadow 0.22s ease;
       background: var(--ion-card-background, #fff8ec);
       border: 1px solid rgba(var(--ion-color-primary-rgb), 0.18);
       cursor: pointer;
 
-      /* 15% Viewport Height Max */
-      height: 15vh;
-      max-height: 15vh;
-      min-height: 105px;
+      /* Fits 3 cards in view */
+      height: calc(25vh - 12px);
+      min-height: 140px;
       display: flex;
       align-items: center;
 
@@ -204,18 +210,15 @@ import { Book } from '../../core/models/app-config.model';
       }
     }
 
-    /* Cover Photo Watermark Overlay */
+    /* Cover Photo Watermark: covers entire card at 20% opacity */
     .book-watermark-overlay {
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      inset: 0;
       background-image: var(--book-watermark, none);
       background-repeat: no-repeat;
       background-position: center;
       background-size: cover;
-      opacity: 0.15; /* Watermark visibility */
+      opacity: 0.20;
       pointer-events: none;
       z-index: 0;
     }
@@ -224,10 +227,12 @@ import { Book } from '../../core/models/app-config.model';
       position: relative;
       z-index: 1;
       width: 100%;
-      padding: 10px 18px;
+      padding: 12px 18px;
       display: flex;
       flex-direction: column;
-      justify-content: center;
+      justify-content: space-between;
+      height: 100%;
+      box-sizing: border-box;
     }
 
     .title-row {
@@ -238,7 +243,7 @@ import { Book } from '../../core/models/app-config.model';
     }
 
     .book-card-title {
-      font-size: 1.22rem;
+      font-size: 1.15rem;
       font-weight: 800;
       color: var(--ion-color-primary);
       margin: 0;
@@ -255,15 +260,19 @@ import { Book } from '../../core/models/app-config.model';
       flex-shrink: 0;
     }
 
+    /* 2-line clamp for description/subtitle */
     .book-card-subtitle {
-      margin: 3px 0 8px 0;
+      margin: 4px 0 8px 0;
       font-size: 0.85rem;
       color: var(--ion-color-medium);
-      line-height: 1.2;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: nowrap;
-      max-width: 90%;
+      white-space: normal;
+      word-break: break-word;
     }
 
     .chapter-count-badge {
