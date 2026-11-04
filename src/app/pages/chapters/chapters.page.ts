@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -15,7 +15,7 @@ import {
   documentTextOutline,
   arrowBackOutline
 } from 'ionicons/icons';
-import { Observable, combineLatest } from 'rxjs';
+import { Observable, Subscription, combineLatest } from 'rxjs';
 
 import { HeaderComponent } from '../../layout/header.component';
 import { DataService } from '../../core/services/data.service';
@@ -39,7 +39,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
 
     <ion-content class="ion-padding chapters-content">
       <div class="chapters-wrapper" *ngIf="activeBook">
-        <!-- Title & Description Header Section (Strict 15% Viewport Height with Cover Watermark) -->
+        <!-- Title & Description Header Section (Max 20% Viewport Height + 2-Line Subtitle) -->
         <div
           class="book-banner-card"
           [style.--cover-watermark]="'url(' + getCoverWatermarkUrl(activeBook) + ')'">
@@ -56,25 +56,28 @@ import { Book, Chapter } from '../../core/models/app-config.model';
           </div>
         </div>
 
-        <!-- Section Heading -->
         <div class="section-title">
           {{ getChaptersSectionTitle() }}
         </div>
 
-        <!-- Full List of Chapters -->
-        <ion-list lines="full" class="chapters-list">
+        <ion-list lines="inset" class="chapters-list">
           <ion-item
-            *ngFor="let chapter of activeBook.chapters; trackBy: trackByChapterId; let i = index"
+            *ngFor="let chapter of activeBook.chapters; trackBy: trackByChapterId"
             button
-            detail="true"
+            detail="false"
             class="chapter-row-item"
-            (click)="openChapter(activeBook.id, chapter.id)">
-            <div slot="start" class="chapter-index-circle">
-              {{ chapter.order || i + 1 }}
+            (click)="openReader(chapter.id)">
+            <div class="chapter-index-circle" slot="start">
+              {{ chapter.order }}
             </div>
-            <ion-label class="ion-text-wrap chapter-label">
-              <h2 class="chapter-title">{{ localize(chapter.title) }}</h2>
+
+            <ion-label class="ion-text-wrap chapter-title-label">
+              <h2 class="chapter-primary-title">{{ localize(chapter.title) }}</h2>
+              <p *ngIf="hasRecordedAudio(chapter)" class="audio-available-hint">
+                {{ (uiText$ | async)?.['audio_available'] || 'Audio available' }}
+              </p>
             </ion-label>
+
             <ion-icon
               slot="end"
               [name]="hasRecordedAudio(chapter) ? 'play-circle-outline' : 'document-text-outline'"
@@ -88,31 +91,28 @@ import { Book, Chapter } from '../../core/models/app-config.model';
   `,
   styles: [`
     .chapters-content {
-      position: relative;
-    }
-    .chapters-wrapper {
-      max-width: 760px;
-      margin: 0 auto;
-      padding-bottom: 30px;
+      --background: var(--ion-background-color, #fffdf9);
     }
 
-    /* Requirement: Exactly 15% Viewport Height Title Section with Cover Watermark */
+    .chapters-wrapper {
+      max-width: 780px;
+      margin: 0 auto;
+    }
+
+    /* 20% Viewport Height Max */
     .book-banner-card {
       position: relative;
-      margin: 0 0 16px 0;
       border-radius: 18px;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+      margin-bottom: 18px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
       background: var(--ion-card-background, #fff8ec);
       border: 1px solid rgba(var(--ion-color-primary-rgb), 0.18);
-      overflow: hidden;
-      
-      /* 15% Viewport Height */
-      height: 15vh;
-      min-height: 105px;
-      max-height: 140px;
+      height: 20vh;
+      max-height: 20vh;
+      min-height: 130px;
       display: flex;
       align-items: center;
-      justify-content: center;
     }
 
     .banner-watermark-overlay {
@@ -125,7 +125,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       background-repeat: no-repeat;
       background-position: center;
       background-size: cover;
-      opacity: 0.15; /* Watermark visibility */
+      opacity: 0.15;
       pointer-events: none;
       z-index: 0;
     }
@@ -133,114 +133,139 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     .banner-content {
       position: relative;
       z-index: 1;
-      padding: 8px 16px;
-      text-align: center;
       width: 100%;
+      padding: 12px 18px;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      justify-content: space-between;
+      height: 100%;
+      box-sizing: border-box;
     }
 
     .book-title {
       font-size: 1.25rem;
       font-weight: 800;
-      margin: 0 0 4px 0;
       color: var(--ion-color-primary);
-      line-height: 1.25;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      max-width: 94%;
-    }
-
-    .book-subtitle {
-      font-size: 0.85rem;
-      color: var(--ion-color-medium);
-      margin: 0 0 6px 0;
+      margin: 0 0 2px 0;
       line-height: 1.2;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      max-width: 94%;
+    }
+
+    /* 2-line clamped description with natural line wrapping */
+    .book-subtitle {
+      font-size: 0.86rem;
+      color: var(--ion-color-medium);
+      line-height: 1.35;
+      margin: 2px 0 6px 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: normal;
+      word-break: break-word;
     }
 
     .chapter-count-chip {
+      align-self: flex-start;
       display: inline-flex;
       align-items: center;
-      gap: 5px;
+      gap: 6px;
       background: rgba(var(--ion-color-primary-rgb), 0.12);
       color: var(--ion-color-primary);
-      padding: 3px 10px;
+      padding: 4px 12px;
       border-radius: 16px;
       font-size: 0.78rem;
       font-weight: 700;
     }
 
     .section-title {
-      font-size: 0.85rem;
+      font-size: 0.88rem;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.8px;
       color: var(--ion-color-medium);
-      margin: 16px 4px 8px;
+      margin: 12px 4px 8px;
     }
 
     .chapters-list {
-      border-radius: 14px;
-      overflow: hidden;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-      background: var(--ion-card-background, #fff8ec);
+      background: transparent;
+      padding: 0;
     }
 
     .chapter-row-item {
-      --padding-start: 14px;
-      --inner-padding-end: 14px;
-      --min-height: 58px;
+      --background: var(--ion-card-background, #fff8ec);
+      --border-radius: 14px;
+      margin-bottom: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+      --padding-start: 12px;
+      --inner-padding-end: 12px;
+      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.08);
+      transition: transform 0.15s ease;
+
+      &:hover {
+        transform: translateX(2px);
+      }
     }
 
     .chapter-index-circle {
       width: 32px;
       height: 32px;
       border-radius: 50%;
-      background: rgba(var(--ion-color-primary-rgb), 0.1);
+      background: rgba(var(--ion-color-primary-rgb), 0.12);
       color: var(--ion-color-primary);
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 700;
-      font-size: 0.85rem;
+      font-size: 0.88rem;
       margin-right: 12px;
+      flex-shrink: 0;
     }
 
-    .chapter-title {
-      font-size: 0.98rem;
-      font-weight: 600;
-      color: var(--ion-text-color, #2c1810);
+    .chapter-primary-title {
+      font-size: 1.02rem;
+      font-weight: 700;
+      color: var(--ion-text-color);
+      margin: 2px 0;
+    }
+
+    .audio-available-hint {
+      font-size: 0.75rem;
+      color: var(--ion-color-medium);
+      margin: 0;
     }
 
     .media-icon {
-      font-size: 1.35rem;
+      font-size: 1.45rem;
     }
   `]
 })
-export class ChaptersPage implements OnInit {
+export class ChaptersPage implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   public dataService = inject(DataService);
   private storageService = inject(StorageService);
 
+  public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
   public activeBook?: Book;
   public activeBookTitle = '';
-  public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
   private currentLang = 'hi';
+  private routeSub?: Subscription;
 
   constructor() {
-    addIcons({ bookOutline, playCircleOutline, documentTextOutline, arrowBackOutline });
+    addIcons({
+      bookOutline,
+      playCircleOutline,
+      documentTextOutline,
+      arrowBackOutline
+    });
   }
 
   ngOnInit(): void {
-    combineLatest([
+    this.routeSub = combineLatest([
       this.route.paramMap,
       this.dataService.visibleBooks$,
       this.storageService.selectedLanguage$
@@ -256,20 +281,8 @@ export class ChaptersPage implements OnInit {
     });
   }
 
-  public getCoverWatermarkUrl(book: Book): string {
-    return this.dataService.resolveMediaUrl(book.coverImageUrl);
-  }
-
-  public getChaptersCountLabel(count: number): string {
-    if (this.currentLang === 'hi' || this.currentLang === 'mr') return `${count} अध्याय`;
-    if (this.currentLang === 'gu') return `${count} અધ્યાય`;
-    return `${count} ${count === 1 ? 'Chapter' : 'Chapters'}`;
-  }
-
-  public getChaptersSectionTitle(): string {
-    if (this.currentLang === 'hi' || this.currentLang === 'mr') return 'अध्याय सूची';
-    if (this.currentLang === 'gu') return 'અધ્યાય સૂચિ';
-    return 'Chapters';
+  public getCoverWatermarkUrl(book: Book | undefined): string {
+    return book ? this.dataService.resolveMediaUrl(book.coverImageUrl) : '';
   }
 
   public localize(mapObj: Record<string, string> | undefined): string {
@@ -281,11 +294,23 @@ export class ChaptersPage implements OnInit {
     return !!raw && raw.trim().length > 0;
   }
 
-  public openChapter(bookId: string, chapterId: string): void {
-    this.router.navigate(['/reader', bookId, chapterId]);
+  public getChaptersCountLabel(count: number): string {
+    return `${count} Chapters`;
+  }
+
+  public getChaptersSectionTitle(): string {
+    return 'Chapters Index';
   }
 
   public trackByChapterId(_index: number, chapter: Chapter): string {
     return chapter.id;
+  }
+
+  public openReader(chapterId: string): void {
+    this.router.navigate(['/reader', this.activeBook?.id, chapterId]);
+  }
+
+  ngOnDestroy(): void {
+    this.routeSub?.unsubscribe();
   }
 }

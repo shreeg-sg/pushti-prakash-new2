@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, NavigationEnd } from '@angular/router';
 import {
@@ -23,7 +23,7 @@ import {
   bookOutline,
   documentTextOutline
 } from 'ionicons/icons';
-import { Observable, combineLatest } from 'rxjs';
+import { Observable, Subscription, combineLatest } from 'rxjs';
 import { filter, map, startWith } from 'rxjs/operators';
 
 import { DataService } from '../core/services/data.service';
@@ -95,7 +95,6 @@ import { FooterComponent } from './footer.component';
         </ion-item>
       </ion-list>
 
-      <!-- Accordion: Collapsed by default unless viewing a chapter -->
       <ion-list lines="none" class="book-tree-section" *ngIf="(visibleBooks$ | async) as books">
         <ion-list-header>
           <ion-label class="tree-section-header">
@@ -137,7 +136,6 @@ import { FooterComponent } from './footer.component';
       </ion-list>
     </ion-content>
 
-    <!-- Footer cleanly docked in Sidebar -->
     <ion-footer class="ion-no-border sidebar-footer">
       <app-footer></app-footer>
     </ion-footer>
@@ -214,7 +212,7 @@ import { FooterComponent } from './footer.component';
     }
   `]
 })
-export class SidebarComponent implements OnInit {
+export class SidebarComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private menuCtrl = inject(MenuController);
   public dataService = inject(DataService);
@@ -227,6 +225,7 @@ export class SidebarComponent implements OnInit {
   public activePath$!: Observable<string>;
   public activeBookId$!: Observable<string | undefined>;
 
+  private langSub?: Subscription;
   private currentLang = 'hi';
 
   constructor() {
@@ -240,7 +239,7 @@ export class SidebarComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    this.storageService.selectedLanguage$.subscribe(lang => {
+    this.langSub = this.storageService.selectedLanguage$.subscribe(lang => {
       this.currentLang = lang;
     });
 
@@ -286,5 +285,9 @@ export class SidebarComponent implements OnInit {
 
   public trackByChapterId(_index: number, chapter: Chapter): string {
     return chapter.id;
+  }
+
+  ngOnDestroy(): void {
+    this.langSub?.unsubscribe();
   }
 }

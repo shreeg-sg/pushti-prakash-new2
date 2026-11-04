@@ -48,10 +48,8 @@ export class DataService implements OnDestroy {
   private isSyncingSubject = new BehaviorSubject<boolean>(false);
   private appStateListener?: PluginListenerHandle;
 
-  // In-memory transcript cache for high performance
   private chapterTranscriptCache = new Map<string, Record<string, string>>();
 
-  // Public Reactive Streams
   public readonly config$: Observable<AppConfigPayload> = this.configSubject.asObservable().pipe(
     filter((cfg): cfg is AppConfigPayload => cfg !== null)
   );
@@ -105,11 +103,7 @@ export class DataService implements OnDestroy {
 
   constructor() { }
 
-  /**
-   * ITEM 1: Once-Daily Startup with Cache-Clear Recovery
-   */
   public async initialize(): Promise<void> {
-    // 1. Instantly load local cache (0ms startup)
     const cachedConfig = await this.loadCachedConfig();
     if (cachedConfig) {
       this.applyAndPublishConfig(cachedConfig);
@@ -117,10 +111,8 @@ export class DataService implements OnDestroy {
       await this.ensureFallbackLoaded();
     }
 
-    // 2. Perform daily sync check
     await this.syncIfDueToday();
 
-    // 3. Re-check on app resume (e.g. across midnight)
     this.appStateListener = await App.addListener('appStateChange', async (state: AppState) => {
       if (state.isActive) {
         this.ngZone.run(async () => {
@@ -130,12 +122,6 @@ export class DataService implements OnDestroy {
     });
   }
 
-  /**
-   * ITEM 1: Once-Daily Sync Gatekeeper with Automatic Cache-Clear Recovery
-   * - If cache exists AND already updated today -> skips network.
-   * - If cache was cleared manually -> FORCES remote fetch immediately.
-   * - If first open today -> fetches remote updates and stamps today.
-   */
   public async syncIfDueToday(force = false): Promise<SyncResult> {
     const today = new Date().toISOString().split('T')[0];
     const { value: lastSyncDate } = await Preferences.get({ key: this.LAST_DAILY_SYNC_KEY });
@@ -143,7 +129,6 @@ export class DataService implements OnDestroy {
 
     const hasValidLocalCache = !!cachedData;
 
-    // Only skip network if local cache exists AND was already updated today
     if (!force && hasValidLocalCache && lastSyncDate === today) {
       console.log(`[DataService] App already updated today (${today}) with local cache intact. Skipping network call.`);
       return { success: true, message: 'Already updated today', isUpdated: false };
@@ -157,10 +142,6 @@ export class DataService implements OnDestroy {
     return result;
   }
 
-  /**
-   * ITEM 2: Remote Fetch Exclusively from the Split Version (Never data.json)
-   * Fetches app_identity.json, supportedLanguages.json, ui_translations.json, books.json, etc. in parallel.
-   */
   public async syncWithRemote(hardClearCache = false): Promise<SyncResult> {
     this.isSyncingSubject.next(true);
 
@@ -238,9 +219,6 @@ export class DataService implements OnDestroy {
     return this.syncWithRemote(true);
   }
 
-  /**
-   * Manual Cache Clearance & Instant Online Sync
-   */
   public async clearCacheAndSync(): Promise<SyncResult> {
     console.log('[DataService] Manual cache clearance triggered. Wiping local storage and updating from online server...');
     await Preferences.remove({ key: this.CACHE_KEY });
@@ -248,10 +226,6 @@ export class DataService implements OnDestroy {
     return this.syncWithRemote(true);
   }
 
-  /**
-   * ITEM 2: Modular On-Demand Chapter Transcript Loader
-   * Loads from memory -> local persistent Preferences -> remote CDN/GitHub split file.
-   */
   public async loadChapterTranscript(bookId: string, chapter: Chapter): Promise<Record<string, string>> {
     if (chapter.transcript && Object.keys(chapter.transcript).length > 0) {
       return chapter.transcript;
@@ -274,9 +248,13 @@ export class DataService implements OnDestroy {
       // Ignore cache read errors
     }
 
-    // Automatically ensures the path targets mock/chapters/... matching your repository
     let relativePath = chapter.contentUrl || `mock/chapters/${bookId}/${chapter.id}.json`;
-    if (!relativePath.startsWith('mock/') && !relativePath.startsWith('assets/mock/')) {
+    if (
+      !relativePath.startsWith('http://') &&
+      !relativePath.startsWith('https://') &&
+      !relativePath.startsWith('mock/') &&
+      !relativePath.startsWith('assets/mock/')
+    ) {
       relativePath = `mock/${relativePath}`;
     }
 
@@ -379,9 +357,6 @@ export class DataService implements OnDestroy {
     );
   }
 
-  /**
-   * ITEM 2: Offline Fallback Exclusively from Local Split Files (Never data.json)
-   */
   private async ensureFallbackLoaded(): Promise<void> {
     if (this.configSubject.value) return;
 

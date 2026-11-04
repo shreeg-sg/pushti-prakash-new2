@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import {
@@ -16,7 +16,7 @@ import {
   bookOutline,
   arrowForwardOutline
 } from 'ionicons/icons';
-import { Observable } from 'rxjs';
+import { Observable, Subscription } from 'rxjs';
 
 import { HeaderComponent } from '../../layout/header.component';
 import { DataService } from '../../core/services/data.service';
@@ -40,7 +40,7 @@ import { Book } from '../../core/models/app-config.model';
   template: `
     <app-header [showBackButton]="false"></app-header>
 
-    <!-- Sticky Notification Banner (Max 25vh, hides on scroll down) -->
+    <!-- Sticky Notification Banner (Fits content height, max 25vh, hides on scroll down) -->
     <div
       class="sticky-notification-banner"
       *ngIf="(updateBanner$ | async) as bannerText"
@@ -80,7 +80,6 @@ import { Book } from '../../core/models/app-config.model';
               <!-- Dynamic Cover Photo Watermark Background (20% Opacity Full Card) -->
               <div class="book-watermark-overlay" aria-hidden="true"></div>
 
-              <!-- Card Content Floating on Top of Watermark -->
               <div class="book-card-content">
                 <div class="title-row">
                   <h2 class="book-card-title">{{ localize(book.title) }}</h2>
@@ -117,7 +116,9 @@ import { Book } from '../../core/models/app-config.model';
       font-size: 0.92rem;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 
-      height: 25vh;
+      /* Automatically wraps content height, capped at strict 25vh max with smooth scrolling */
+      height: auto;
+      min-height: fit-content;
       max-height: 25vh;
       box-sizing: border-box;
       overflow-y: auto;
@@ -137,6 +138,7 @@ import { Book } from '../../core/models/app-config.model';
       opacity: 0;
       pointer-events: none;
       border-bottom-width: 0;
+      overflow: hidden;
     }
 
     .banner-icon {
@@ -289,7 +291,7 @@ import { Book } from '../../core/models/app-config.model';
     }
   `]
 })
-export class DashboardPage implements OnInit {
+export class DashboardPage implements OnInit, OnDestroy {
   private router = inject(Router);
   public dataService = inject(DataService);
   private storageService = inject(StorageService);
@@ -304,6 +306,9 @@ export class DashboardPage implements OnInit {
   private hasBooks = false;
   private currentLang = 'hi';
 
+  private langSub?: Subscription;
+  private booksSub?: Subscription;
+
   constructor() {
     addIcons({
       sparklesOutline,
@@ -313,11 +318,11 @@ export class DashboardPage implements OnInit {
   }
 
   ngOnInit(): void {
-    this.storageService.selectedLanguage$.subscribe(lang => {
+    this.langSub = this.storageService.selectedLanguage$.subscribe(lang => {
       this.currentLang = lang;
     });
 
-    this.visibleBooks$.subscribe(books => {
+    this.booksSub = this.visibleBooks$.subscribe(books => {
       this.hasBooks = !!(books && books.length > 0);
       if (!this.hasBooks) {
         this.isBannerHidden = false;
@@ -363,5 +368,10 @@ export class DashboardPage implements OnInit {
 
   public trackByBookId(_index: number, book: Book): string {
     return book.id;
+  }
+
+  ngOnDestroy(): void {
+    this.langSub?.unsubscribe();
+    this.booksSub?.unsubscribe();
   }
 }
