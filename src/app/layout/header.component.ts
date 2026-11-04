@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, inject } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, NavigationEnd } from '@angular/router';
 import {
@@ -19,7 +19,8 @@ import {
   arrowBackOutline,
   closeOutline,
   optionsOutline,
-  checkmarkOutline
+  checkmarkOutline,
+  searchOutline
 } from 'ionicons/icons';
 import { Observable, combineLatest } from 'rxjs';
 import { filter, map, startWith } from 'rxjs/operators';
@@ -46,29 +47,63 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
     <ion-header class="ion-no-border">
       <ion-toolbar color="primary" class="main-header-toolbar">
         <ion-buttons slot="start">
-          <ion-menu-button autoHide="true"></ion-menu-button>
+          <ion-menu-button autoHide="true" *ngIf="!isSearchActive"></ion-menu-button>
           <ion-button
-            *ngIf="shouldShowBack$ | async"
+            *ngIf="(shouldShowBack$ | async) && !isSearchActive"
             (click)="onBackClick()"
             aria-label="Back">
             <ion-icon slot="icon-only" name="arrow-back-outline"></ion-icon>
           </ion-button>
         </ion-buttons>
 
-        <ion-title class="header-dynamic-title">
+        <!-- Standard Title View -->
+        <ion-title class="header-dynamic-title" *ngIf="!isSearchActive">
           {{ pageTitle || (resolvedRouteTitle$ | async) }}
         </ion-title>
 
+        <!-- Dynamic Header Search Input View (Dashboard Only) -->
+        <div class="header-search-box" *ngIf="isSearchActive">
+          <ion-icon name="search-outline" class="search-box-icon"></ion-icon>
+          <input
+            #searchInput
+            type="text"
+            [placeholder]="searchPlaceholder"
+            [value]="searchQuery"
+            (input)="onSearchInput($event)"
+            class="header-search-input"
+            autofocus />
+          <button
+            type="button"
+            *ngIf="searchQuery"
+            class="search-clear-btn"
+            (click)="clearSearch()"
+            aria-label="Clear Search">
+            <ion-icon name="close-outline"></ion-icon>
+          </button>
+        </div>
+
         <ion-buttons slot="end">
+          <!-- Search Toggle Button (Dashboard Only) -->
+          <ion-button
+            *ngIf="showSearch"
+            class="search-toggle-btn"
+            (click)="toggleSearch()"
+            [attr.aria-label]="isSearchActive ? 'Close search' : 'Search books'">
+            <ion-icon slot="icon-only" [name]="isSearchActive ? 'close-outline' : 'search-outline'"></ion-icon>
+          </ion-button>
+
           <ng-content select="[headerEndActions]"></ng-content>
 
+          <!-- Settings Trigger Button -->
           <ion-button
+            *ngIf="!isSearchActive"
             class="settings-trigger-btn"
             (click)="openSettingsPopover($event)"
             aria-label="Reading Settings">
             <ion-icon slot="icon-only" name="options-outline"></ion-icon>
           </ion-button>
 
+          <!-- Settings & Preferences Popover -->
           <ion-popover
             [isOpen]="isSettingsPopoverOpen"
             [event]="settingsPopoverEvent"
@@ -169,53 +204,93 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
       font-size: clamp(0.85rem, 3.2vw, 1rem);
       line-height: 1.25;
       text-align: center;
-      max-height: 2.6em;
+      margin: 0 auto;
+      max-width: 90%;
     }
-    .settings-trigger-btn {
-      --padding-start: 6px;
-      --padding-end: 6px;
-      font-size: 1.25rem;
+
+    .header-search-box {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.22);
+      border-radius: 20px;
+      padding: 4px 12px;
+      margin: 0 8px;
+      gap: 8px;
     }
+
+    .search-box-icon {
+      font-size: 1.15rem;
+      color: #fff;
+      opacity: 0.9;
+      flex-shrink: 0;
+    }
+
+    .header-search-input {
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 500;
+      width: 100%;
+
+      &::placeholder {
+        color: rgba(255, 255, 255, 0.75);
+      }
+    }
+
+    .search-clear-btn {
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-size: 1.15rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      cursor: pointer;
+      opacity: 0.85;
+    }
+
+    .search-toggle-btn {
+      --color: #fff;
+    }
+
     .header-settings-popover {
-      --width: 300px;
-      --max-width: 92vw;
+      --width: 290px;
     }
     .popover-first-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 10px 14px;
-      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-      background: var(--ion-color-light, #f4f5f8);
+      padding: 12px 14px 6px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     }
     .popover-heading {
-      font-size: 0.92rem;
+      font-size: 0.88rem;
       font-weight: 700;
-      color: var(--ion-text-color, #2c1810);
+      color: var(--ion-color-medium, #666);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
     .popover-close-btn {
       background: transparent;
       border: none;
-      padding: 4px;
-      cursor: pointer;
+      color: var(--ion-color-medium, #888);
+      font-size: 1.25rem;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.3rem;
-      color: var(--ion-color-medium, #666666);
-      border-radius: 50%;
-      transition: background 0.15s ease;
-
-      &:hover, &:active {
-        background: rgba(0, 0, 0, 0.08);
-      }
+      padding: 2px;
+      cursor: pointer;
     }
     .popover-body-content {
       padding: 12px 14px 16px;
     }
     .popover-section {
       margin-bottom: 14px;
-
       &:last-child {
         margin-bottom: 0;
       }
@@ -226,69 +301,97 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
       gap: 6px;
       margin-bottom: 8px;
     }
+    .section-label-row ion-icon {
+      font-size: 1rem;
+    }
     .section-label-text {
-      font-size: 0.8rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.6px;
-      color: var(--ion-color-medium, #666666);
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--ion-color-medium, #666);
     }
     .pill-group {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
-      gap: 8px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
     }
     .pill-btn {
-      width: 100%;
-      padding: 9px 4px;
-      border-radius: 10px;
-      border: 1.5px solid rgba(var(--ion-color-primary-rgb), 0.22);
-      background: var(--ion-background-color, #ffffff);
-      color: var(--ion-text-color, #2c1810);
-      font-size: clamp(0.78rem, 2.5vw, 0.86rem);
+      flex: 1;
+      min-width: 65px;
+      padding: 6px 10px;
+      border-radius: 16px;
+      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.25);
+      background: var(--ion-card-background, #fff8ec);
+      color: var(--ion-color-primary);
+      font-size: 0.8rem;
       font-weight: 600;
       cursor: pointer;
+      transition: all 0.2s ease;
       text-align: center;
-      white-space: nowrap !important;
-      word-break: keep-all !important;
-      hyphens: none !important;
-      text-overflow: ellipsis;
-      overflow: hidden;
-      transition: all 0.18s ease;
-
-      &:hover {
-        background: rgba(var(--ion-color-primary-rgb), 0.06);
-      }
     }
     .pill-btn.active-pill {
-      border-color: var(--ion-color-primary);
       background: var(--ion-color-primary);
-      color: var(--ion-color-primary-contrast, #ffffff);
-      font-weight: 700;
-      box-shadow: 0 2px 6px rgba(var(--ion-color-primary-rgb), 0.3);
+      color: #ffffff;
+      border-color: var(--ion-color-primary);
     }
   `]
 })
 export class HeaderComponent implements OnInit {
-  private router = inject(Router);
-  private navCtrl = inject(NavController);
-  public dataService = inject(DataService);
-  public storageService = inject(StorageService);
-
   @Input() pageTitle?: string;
   @Input() showBackButton?: boolean;
+  @Input() showSearch = false;
+  @Input() searchPlaceholder = 'Search books...';
+  @Output() searchChange = new EventEmitter<string>();
+
+  private router = inject(Router);
+  private navCtrl = inject(NavController);
+  private dataService = inject(DataService);
+  private storageService = inject(StorageService);
+
+  public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
+  public enabledLanguages$: Observable<SupportedLanguage[]> = this.dataService.enabledLanguages$;
+  public selectedLanguage$: Observable<string> = this.storageService.selectedLanguage$;
+  public selectedFontSize$: Observable<FontSizeScale> = this.storageService.selectedFontSize$;
 
   public isSettingsPopoverOpen = false;
   public settingsPopoverEvent: any = null;
 
-  public enabledLanguages$: Observable<SupportedLanguage[]> = this.dataService.enabledLanguages$;
-  public selectedLanguage$: Observable<string> = this.storageService.selectedLanguage$;
-  public selectedFontSize$: Observable<FontSizeScale> = this.storageService.selectedFontSize$;
-  public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
+  public isSearchActive = false;
+  public searchQuery = '';
 
-  public currentUrl$!: Observable<string>;
-  public shouldShowBack$!: Observable<boolean>;
-  public resolvedRouteTitle$!: Observable<string>;
+  public resolvedRouteTitle$: Observable<string> = combineLatest([
+    this.router.events.pipe(
+      filter(event => event instanceof NavigationEnd),
+      startWith(null)
+    ),
+    this.dataService.config$,
+    this.storageService.selectedLanguage$
+  ]).pipe(
+    map(([_, cfg, lang]) => {
+      const url = this.router.url;
+      if (url.includes('/dashboard')) {
+        return this.dataService.localizeField(cfg.app_identity.appName, lang) || cfg.app_identity.defaultAppName;
+      }
+      if (url.includes('/bookmarks')) {
+        return this.dataService.localizeField(cfg.ui_translations['nav_bookmarks'], lang) || 'Bookmarks';
+      }
+      if (url.includes('/about')) {
+        return this.dataService.localizeField(cfg.ui_translations['nav_about'], lang) || 'About Us';
+      }
+      return '';
+    })
+  );
+
+  public shouldShowBack$: Observable<boolean> = this.router.events.pipe(
+    filter(event => event instanceof NavigationEnd),
+    startWith(null),
+    map(() => {
+      if (this.showBackButton !== undefined) {
+        return this.showBackButton;
+      }
+      const url = this.router.url;
+      return !url.includes('/dashboard');
+    })
+  );
 
   constructor() {
     addIcons({
@@ -297,68 +400,32 @@ export class HeaderComponent implements OnInit {
       arrowBackOutline,
       closeOutline,
       optionsOutline,
-      checkmarkOutline
+      checkmarkOutline,
+      searchOutline
     });
   }
 
-  ngOnInit(): void {
-    this.currentUrl$ = this.router.events.pipe(
-      filter((e): e is NavigationEnd => e instanceof NavigationEnd),
-      map(e => e.urlAfterRedirects.split('?')[0]),
-      startWith(this.router.url.split('?')[0])
-    );
+  ngOnInit(): void {}
 
-    this.shouldShowBack$ = this.currentUrl$.pipe(
-      map(url => {
-        if (typeof this.showBackButton === 'boolean') {
-          return this.showBackButton;
-        }
-        return url !== '/dashboard' && url !== '/';
-      })
-    );
+  public toggleSearch(): void {
+    this.isSearchActive = !this.isSearchActive;
+    if (!this.isSearchActive) {
+      this.clearSearch();
+    }
+  }
 
-    this.resolvedRouteTitle$ = combineLatest([
-      this.currentUrl$,
-      this.dataService.identity$,
-      this.dataService.uiText$,
-      this.dataService.visibleBooks$,
-      this.storageService.selectedLanguage$
-    ]).pipe(
-      map(([url, identity, uiText, books, lang]) => {
-        if (url.startsWith('/bookmarks')) {
-          return uiText['nav_bookmarks'] || 'Bookmarks';
-        }
-        if (url.startsWith('/about')) {
-          return uiText['nav_about'] || 'About Us';
-        }
-        if (url.startsWith('/chapters/')) {
-          const segments = url.split('/');
-          const bookId = segments[2];
-          const book = books.find(b => b.id === bookId);
-          if (book) {
-            return this.dataService.localizeField(book.title, lang);
-          }
-        }
-        if (url.startsWith('/reader/')) {
-          const segments = url.split('/');
-          const bookId = segments[2];
-          const chapterId = segments[3];
-          const book = books.find(b => b.id === bookId);
-          const chapter = book?.chapters.find(c => c.id === chapterId);
-          if (chapter) {
-            return this.dataService.localizeField(chapter.title, lang);
-          }
-          if (book) {
-            return this.dataService.localizeField(book.title, lang);
-          }
-        }
-        return (
-          this.dataService.localizeField(identity?.appName, lang) ||
-          identity?.defaultAppName ||
-          ''
-        );
-      })
-    );
+  public onSearchInput(event: any): void {
+    this.searchQuery = event.target?.value || '';
+    this.searchChange.emit(this.searchQuery);
+  }
+
+  public clearSearch(): void {
+    this.searchQuery = '';
+    this.searchChange.emit('');
+  }
+
+  public onBackClick(): void {
+    this.navCtrl.back();
   }
 
   public openSettingsPopover(event: Event): void {
@@ -366,20 +433,15 @@ export class HeaderComponent implements OnInit {
     this.isSettingsPopoverOpen = true;
   }
 
-  public onBackClick(): void {
-    this.navCtrl.back();
-  }
-
-  public async onLanguageChange(newLangCode: string): Promise<void> {
-    if (!newLangCode) return;
-    await this.storageService.setLanguage(newLangCode);
+  public async onLanguageChange(code: string): Promise<void> {
+    await this.storageService.setLanguage(code);
   }
 
   public async setFontScale(scale: FontSizeScale): Promise<void> {
     await this.storageService.setFontSize(scale);
   }
 
-  public trackByLangCode(_index: number, item: SupportedLanguage): string {
-    return item.code;
+  public trackByLangCode(_index: number, lang: SupportedLanguage): string {
+    return lang.code;
   }
 }

@@ -6,14 +6,16 @@ import {
   IonList,
   IonItem,
   IonLabel,
-  IonIcon
+  IonIcon,
+  IonSearchbar
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
   bookOutline,
   playCircleOutline,
   documentTextOutline,
-  arrowBackOutline
+  arrowBackOutline,
+  searchOutline
 } from 'ionicons/icons';
 import { Observable, Subscription, combineLatest } from 'rxjs';
 
@@ -32,12 +34,21 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     IonList,
     IonItem,
     IonLabel,
-    IonIcon
+    IonIcon,
+    IonSearchbar
   ],
   template: `
     <app-header [pageTitle]="activeBookTitle"></app-header>
 
     <ion-content class="ion-padding chapters-content">
+      <!-- Full-Page Centered Watermark (Always visible behind chapters list) -->
+      <div
+        class="watermark-overlay"
+        *ngIf="watermarkUrl$ | async as wmUrl"
+        [style.backgroundImage]="'url(' + wmUrl + ')'"
+        aria-hidden="true">
+      </div>
+
       <div class="chapters-wrapper" *ngIf="activeBook">
         <!-- Title & Description Header Section (Max 20% Viewport Height + 2-Line Subtitle) -->
         <div
@@ -56,13 +67,24 @@ import { Book, Chapter } from '../../core/models/app-config.model';
           </div>
         </div>
 
+        <!-- In-Page Chapter Search Bar -->
+        <div class="chapter-searchbar-container">
+          <ion-searchbar
+            [placeholder]="getChapterSearchPlaceholder()"
+            [debounce]="100"
+            (ionInput)="onChapterSearch($event)"
+            (ionClear)="clearChapterSearch()"
+            class="chapter-searchbar">
+          </ion-searchbar>
+        </div>
+
         <div class="section-title">
-          {{ getChaptersSectionTitle() }}
+          {{ getChaptersSectionTitle() }} ({{ filteredChapters.length }})
         </div>
 
         <ion-list lines="inset" class="chapters-list">
           <ion-item
-            *ngFor="let chapter of activeBook.chapters; trackBy: trackByChapterId"
+            *ngFor="let chapter of filteredChapters; trackBy: trackByChapterId"
             button
             detail="false"
             class="chapter-row-item"
@@ -85,6 +107,13 @@ import { Book, Chapter } from '../../core/models/app-config.model';
               class="media-icon">
             </ion-icon>
           </ion-item>
+
+          <!-- No Chapters Found Empty State -->
+          <div *ngIf="filteredChapters.length === 0" class="no-chapters-hint">
+            <ion-icon name="document-text-outline" class="empty-chapter-icon"></ion-icon>
+            <p class="empty-chapter-title">No chapters match "{{ chapterSearchQuery }}"</p>
+            <p class="empty-chapter-subtitle">Try searching by chapter name or order number</p>
+          </div>
         </ion-list>
       </div>
     </ion-content>
@@ -92,11 +121,30 @@ import { Book, Chapter } from '../../core/models/app-config.model';
   styles: [`
     .chapters-content {
       --background: var(--ion-background-color, #fffdf9);
+      position: relative;
+    }
+
+    /* Full-Page Centered Watermark */
+    .watermark-overlay {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 280px;
+      height: 280px;
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: contain;
+      opacity: 0.15;
+      pointer-events: none;
+      z-index: 0;
     }
 
     .chapters-wrapper {
       max-width: 780px;
       margin: 0 auto;
+      position: relative;
+      z-index: 1;
     }
 
     /* 20% Viewport Height Max */
@@ -104,7 +152,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       position: relative;
       border-radius: 18px;
       overflow: hidden;
-      margin-bottom: 18px;
+      margin-bottom: 14px;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
       background: var(--ion-card-background, #fff8ec);
       border: 1px solid rgba(var(--ion-color-primary-rgb), 0.18);
@@ -181,6 +229,22 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       font-weight: 700;
     }
 
+    /* Chapter In-Page Search Bar Styling */
+    .chapter-searchbar-container {
+      margin-bottom: 10px;
+    }
+
+    .chapter-searchbar {
+      --background: var(--ion-card-background, #fff8ec);
+      --color: var(--ion-text-color, #2c1810);
+      --placeholder-color: var(--ion-color-medium, #888);
+      --icon-color: var(--ion-color-primary, #8B2635);
+      --clear-button-color: var(--ion-color-medium, #888);
+      --border-radius: 12px;
+      --box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      padding: 0;
+    }
+
     .section-title {
       font-size: 0.88rem;
       font-weight: 700;
@@ -196,13 +260,13 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     }
 
     .chapter-row-item {
-      --background: var(--ion-card-background, #fff8ec);
+      --background: rgba(255, 248, 236, 0.92);
       --border-radius: 14px;
       margin-bottom: 8px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
       --padding-start: 12px;
       --inner-padding-end: 12px;
-      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.08);
+      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.12);
       transition: transform 0.15s ease;
 
       &:hover {
@@ -241,6 +305,30 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     .media-icon {
       font-size: 1.45rem;
     }
+
+    .no-chapters-hint {
+      text-align: center;
+      padding: 32px 16px;
+      color: var(--ion-color-medium);
+    }
+
+    .empty-chapter-icon {
+      font-size: 3rem;
+      opacity: 0.6;
+      margin-bottom: 8px;
+    }
+
+    .empty-chapter-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--ion-text-color);
+      margin: 0 0 4px 0;
+    }
+
+    .empty-chapter-subtitle {
+      font-size: 0.85rem;
+      margin: 0;
+    }
   `]
 })
 export class ChaptersPage implements OnInit, OnDestroy {
@@ -250,17 +338,21 @@ export class ChaptersPage implements OnInit, OnDestroy {
   private storageService = inject(StorageService);
 
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
+  public watermarkUrl$: Observable<string> = this.dataService.watermarkUrl$;
   public activeBook?: Book;
   public activeBookTitle = '';
   private currentLang = 'hi';
   private routeSub?: Subscription;
+
+  public chapterSearchQuery = '';
 
   constructor() {
     addIcons({
       bookOutline,
       playCircleOutline,
       documentTextOutline,
-      arrowBackOutline
+      arrowBackOutline,
+      searchOutline
     });
   }
 
@@ -274,11 +366,47 @@ export class ChaptersPage implements OnInit, OnDestroy {
       const bookId = params.get('bookId');
       if (!bookId) return;
 
-      this.activeBook = books.find(b => b.id === bookId);
+      this.activeBook = books.find((b: Book) => b.id === bookId);
       if (this.activeBook) {
         this.activeBookTitle = this.localize(this.activeBook.title);
       }
     });
+  }
+
+  public get filteredChapters(): Chapter[] {
+    if (!this.activeBook?.chapters) return [];
+    if (!this.chapterSearchQuery) return this.activeBook.chapters;
+
+    const q = this.chapterSearchQuery.trim().toLowerCase();
+    return this.activeBook.chapters.filter((ch: Chapter) => {
+      const titleMatch = ch.title
+        ? Object.values(ch.title).some(t => String(t || '').toLowerCase().includes(q))
+        : false;
+      const subtitleMatch = (ch as any).subtitle
+        ? Object.values((ch as any).subtitle).some((s: any) => String(s || '').toLowerCase().includes(q))
+        : false;
+      const orderMatch = String(ch.order) === q || String(ch.order).includes(q);
+      const idMatch = String(ch.id || '').toLowerCase().includes(q);
+      return titleMatch || subtitleMatch || orderMatch || idMatch;
+    });
+  }
+
+  public onChapterSearch(event: any): void {
+    this.chapterSearchQuery = event.detail?.value || '';
+  }
+
+  public clearChapterSearch(): void {
+    this.chapterSearchQuery = '';
+  }
+
+  public getChapterSearchPlaceholder(): string {
+    const map: Record<string, string> = {
+      hi: 'अध्याय खोजें...',
+      gu: 'પ્રકરણ શોધો...',
+      mr: 'धडा शोधा...',
+      en: 'Search chapters by name or number...'
+    };
+    return map[this.currentLang] || 'Search chapters by name or number...';
   }
 
   public getCoverWatermarkUrl(book: Book | undefined): string {

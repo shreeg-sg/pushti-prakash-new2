@@ -63,7 +63,13 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     </app-header>
 
     <ion-content class="ion-padding reader-transcript-container">
-      <div class="watermark-overlay" aria-hidden="true"></div>
+      <!-- Watermark using Ionic slot="fixed" and direct observable binding (Always visible) -->
+      <div
+        slot="fixed"
+        class="watermark-overlay"
+        [style.backgroundImage]="'url(' + ((watermarkUrl$ | async) || 'assets/images/logo.png') + ')'"
+        aria-hidden="true">
+      </div>
 
       <div class="reader-body" *ngIf="activeBook && activeChapter">
         <div class="book-breadcrumb">{{ localize(activeBook.title) }}</div>
@@ -194,21 +200,22 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     }
 
     .reader-transcript-container {
+      --background: var(--ion-background-color, #fffdf9);
       position: relative;
     }
 
+    /* Full-Page Centered Watermark via Ionic slot="fixed" */
     .watermark-overlay {
-      position: fixed;
+      position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
       width: 280px;
       height: 280px;
-      background-image: var(--app-watermark-image, none);
       background-repeat: no-repeat;
       background-position: center;
       background-size: contain;
-      opacity: 0.12;
+      opacity: 0.18;
       pointer-events: none;
       z-index: 0;
     }
@@ -219,6 +226,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       padding-bottom: 215px;
       position: relative;
       z-index: 1;
+      background: transparent;
     }
 
     .book-breadcrumb {
@@ -263,6 +271,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       padding: 6px 8px;
       border-radius: 8px;
       transition: background-color 0.2s ease;
+      background: transparent;
     }
 
     .transcript-paragraph b, .transcript-paragraph strong {
@@ -274,7 +283,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     }
 
     .active-tts-chunk {
-      background-color: rgba(var(--ion-color-secondary-rgb), 0.25);
+      background-color: rgba(var(--ion-color-secondary-rgb), 0.25) !important;
       border-left: 3px solid var(--ion-color-primary);
     }
 
@@ -401,6 +410,7 @@ export class ReaderPage implements OnInit, OnDestroy {
   public ttsService = inject(TtsService);
 
   public playerState$: Observable<PlayerState> = this.ttsService.playerState$;
+  public watermarkUrl$: Observable<string> = this.dataService.watermarkUrl$;
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
   public isBookmarked$!: Observable<boolean>;
 
