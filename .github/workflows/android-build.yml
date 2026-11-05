@@ -94,17 +94,17 @@ jobs:
           npx cap sync android
           if [ -f "android/app/src/main/res/values/strings.xml" ]; then
             python3 -c "
-import os, re
-path = 'android/app/src/main/res/values/strings.xml'
-app_name = os.environ.get('APP_NAME', 'PushtiPrakash')
-if os.path.exists(path):
-    with open(path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    content = re.sub(r'<string name=\"app_name\">.*?</string>', f'<string name=\"app_name\">{app_name}</string>', content)
-    content = re.sub(r'<string name=\"title_activity_main\">.*?</string>', f'<string name=\"title_activity_main\">{app_name}</string>', content)
-    with open(path, 'w', encoding='utf-8') as f:
-        f.write(content)
-"
+            import os, re
+            path = 'android/app/src/main/res/values/strings.xml'
+            app_name = os.environ.get('APP_NAME', 'PushtiPrakash')
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                content = re.sub(r'<string name=\"app_name\">.*?</string>', f'<string name=\"app_name\">{app_name}</string>', content)
+                content = re.sub(r'<string name=\"title_activity_main\">.*?</string>', f'<string name=\"title_activity_main\">{app_name}</string>', content)
+                with open(path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+            "
           fi
 
       - name: Stamp Version Code & Name in build.gradle
