@@ -108,30 +108,30 @@ jobs:
             mkdir -p "$ICON_DIR"
 
             python3 -c "
-import os
-from PIL import Image
+            import os
+            from PIL import Image
 
-logo_path = '/tmp/logo.png'
-if os.path.exists(logo_path):
-    img = Image.open(logo_path).convert('RGBA')
-    icon_dir = 'ios/App/App/Assets.xcassets/AppIcon.appiconset'
-    targets = {
-        'AppIcon-512@2x.png': 1024,
-        'AppIcon-60@3x.png': 180,
-        'AppIcon-60@2x.png': 120,
-        'AppIcon-83.5@2x.png': 167,
-        'AppIcon-76@2x.png': 152,
-        'AppIcon-76@1x.png': 76
-    }
-    for fname, size in targets.items():
-        fg_size = int(size * 0.68)
-        resized = img.resize((fg_size, fg_size), Image.Resampling.LANCZOS)
-        canvas = Image.new('RGBA', (size, size), (255, 253, 249, 255))
-        offset = ((size - fg_size) // 2, (size - fg_size) // 2)
-        canvas.paste(resized, offset, mask=resized)
-        canvas.convert('RGB').save(f'{icon_dir}/{fname}')
-    print('Generated 68% scaled iOS icons without alpha transparency.')
-"
+            logo_path = '/tmp/logo.png'
+            if os.path.exists(logo_path):
+                img = Image.open(logo_path).convert('RGBA')
+                icon_dir = 'ios/App/App/Assets.xcassets/AppIcon.appiconset'
+                targets = {
+                    'AppIcon-512@2x.png': 1024,
+                    'AppIcon-60@3x.png': 180,
+                    'AppIcon-60@2x.png': 120,
+                    'AppIcon-83.5@2x.png': 167,
+                    'AppIcon-76@2x.png': 152,
+                    'AppIcon-76@1x.png': 76
+                }
+                for fname, size in targets.items():
+                    fg_size = int(size * 0.68)
+                    resized = img.resize((fg_size, fg_size), Image.Resampling.LANCZOS)
+                    canvas = Image.new('RGBA', (size, size), (255, 253, 249, 255))
+                    offset = ((size - fg_size) // 2, (size - fg_size) // 2)
+                    canvas.paste(resized, offset, mask=resized)
+                    canvas.convert('RGB').save(f'{icon_dir}/{fname}')
+                print('Generated 68% scaled iOS icons without alpha transparency.')
+            "
             echo '{"images":[{"idiom":"universal","platform":"ios","size":"1024x1024"},{"idiom":"universal","platform":"ios","size":"1024x1024","filename":"AppIcon-512@2x.png"}],"info":{"author":"xcode","version":1}}' > "$ICON_DIR/Contents.json"
             echo "Successfully generated iOS AppIcon catalog scaled at 68%!"
           else
