@@ -19,22 +19,22 @@ export class NotificationService implements OnDestroy {
   constructor(
     private router: Router,
     private ngZone: NgZone
-  ) { }
+  ) {}
 
-  /**
-   * Registers the tap listener for local notifications so deep links to books/chapters open cleanly.
-   */
   public async initialize(): Promise<void> {
     if (this.isInitialized || !Capacitor.isNativePlatform()) return;
     this.isInitialized = true;
 
+    // Listen for notification tap / action
     this.actionListener = await LocalNotifications.addListener(
       'localNotificationActionPerformed',
       (event: ActionPerformed) => {
         const extra = event.notification?.extra;
         if (extra?.targetBookId && extra?.targetChapterId) {
           this.ngZone.run(() => {
-            this.router.navigate(['/reader', extra.targetBookId, extra.targetChapterId]);
+            this.router.navigate(['/reader', extra.targetBookId, extra.targetChapterId], {
+              replaceUrl: false
+            });
           });
         } else {
           this.ngZone.run(() => {
@@ -45,9 +45,6 @@ export class NotificationService implements OnDestroy {
     );
   }
 
-  /**
-   * Requests permission, clears old scheduled notifications, and schedules new ones from JSON.
-   */
   public async rescheduleNotifications(
     schedules: NotificationSchedule[],
     langCode: string
@@ -57,20 +54,17 @@ export class NotificationService implements OnDestroy {
     try {
       await this.initialize();
 
-      // 1. Permission check
       let permStatus = await LocalNotifications.checkPermissions();
       if (permStatus.display === 'prompt' || permStatus.display === 'prompt-with-rationale') {
         permStatus = await LocalNotifications.requestPermissions();
       }
       if (permStatus.display !== 'granted') return;
 
-      // 2. Clear old pending notifications
       const pending = await LocalNotifications.getPending();
       if (pending.notifications.length > 0) {
         await LocalNotifications.cancel({ notifications: pending.notifications });
       }
 
-      // 3. Filter active schedules
       const activeSchedules = (schedules || []).filter(item => item.isEnabled);
       if (activeSchedules.length === 0) return;
 
@@ -78,17 +72,23 @@ export class NotificationService implements OnDestroy {
       const notificationsToSchedule: LocalNotificationSchema[] = [];
 
       for (const item of activeSchedules) {
-        // CASE A: Specific calendar date notification
+        // App logo & brand color branding
+        const iconConfig = {
+          smallIcon: 'ic_launcher',
+          largeIcon: 'ic_launcher',
+          iconColor: '#8B2635'
+        };
+
         if (item.date) {
           const [year, month, day] = item.date.split('-').map(Number);
           const targetDateTime = new Date(year, month - 1, day, item.hour || 8, item.minute || 0, 0);
 
-          // Only schedule if the date is in the future
           if (targetDateTime.getTime() > now) {
             notificationsToSchedule.push({
               id: item.id,
               title: this.resolveText(item.title, langCode),
               body: this.resolveText(item.body, langCode),
+              ...iconConfig,
               schedule: {
                 at: targetDateTime,
                 allowWhileIdle: true
@@ -99,13 +99,12 @@ export class NotificationService implements OnDestroy {
               }
             });
           }
-        }
-        // CASE B: Recurring daily notification
-        else {
+        } else {
           notificationsToSchedule.push({
             id: item.id,
             title: this.resolveText(item.title, langCode),
             body: this.resolveText(item.body, langCode),
+            ...iconConfig,
             schedule: {
               on: {
                 hour: item.hour,
@@ -132,7 +131,7 @@ export class NotificationService implements OnDestroy {
 
   private resolveText(mapObj: Record<string, string> | undefined, langCode: string): string {
     if (!mapObj) return '';
-    return mapObj[langCode] || mapObj['en'] || mapObj['hi'] || Object.values(mapObj)[0] || '';
+    return mapObj[langCode] || mapObj['hi'] || mapObj['gu'] || mapObj['en'] || Object.values(mapObj)[0] || '';
   }
 
   ngOnDestroy(): void {

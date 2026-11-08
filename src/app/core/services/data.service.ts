@@ -9,25 +9,17 @@ import { PluginListenerHandle } from '@capacitor/core';
 import { environment } from '../../../environments/environment';
 import {
   AppConfig,
-  AppConfigPayload,
   AppIdentity,
   SupportedLanguage,
   UiTranslations,
   Book,
   Chapter,
   AboutInfo,
-  NotificationSchedule,
-  BannerItem
+  NotificationSchedule
 } from '../models/app-config.model';
 import { ThemeService } from './theme.service';
 import { StorageService } from './storage.service';
 import { NotificationService } from './notification.service';
-
-export interface ChapterContentPayload {
-  id?: string;
-  bookId?: string;
-  transcript: Record<string, string>;
-}
 
 @Injectable({
   providedIn: 'root'
@@ -102,24 +94,15 @@ export class DataService implements OnDestroy {
     }
 
     if (typeof bannerData === 'object') {
-      if (Array.isArray(bannerData.announcements)) {
-        const found = this.resolveDateAwareBanner(bannerData.announcements, lang);
-        if (found) return found;
-        if (bannerData.default) return this.localizeField(bannerData.default, lang) || null;
-      }
-
       if (bannerData[today]) {
         return this.localizeField(bannerData[today], lang) || null;
       }
-
-      const keys = Object.keys(bannerData);
-      const hasLangKeys = ['hi', 'gu', 'en', 'mr'].some(k => keys.includes(k));
-      if (hasLangKeys && (typeof bannerData['hi'] === 'string' || typeof bannerData['en'] === 'string' || typeof bannerData['gu'] === 'string')) {
-        return this.localizeField(bannerData, lang) || null;
-      }
-
       if (bannerData.default) {
         return this.localizeField(bannerData.default, lang) || null;
+      }
+      const keys = Object.keys(bannerData);
+      if (['hi', 'gu', 'en', 'mr'].some(k => keys.includes(k))) {
+        return this.localizeField(bannerData, lang) || null;
       }
     }
 
@@ -171,16 +154,12 @@ export class DataService implements OnDestroy {
       this.applyAndPublishConfig(cachedConfig);
     }
 
-    const remoteResult = await this.syncWithRemote();
-    if (!remoteResult.success && !cachedConfig) {
-      console.warn('[DataService] Offline and no cache detected. Loading emergency local bundle fallback...');
-      await this.ensureFallbackLoaded();
-    }
+    await this.syncIfDueToday();
 
     this.appStateListener = await App.addListener('appStateChange', async (state: AppState) => {
       if (state.isActive) {
         this.ngZone.run(async () => {
-          await this.syncWithRemote();
+          await this.syncIfDueToday();
         });
       }
     });
@@ -191,20 +170,14 @@ export class DataService implements OnDestroy {
     const { value: lastSyncDate } = await Preferences.get({ key: this.LAST_DAILY_SYNC_KEY });
     const { value: cachedData } = await Preferences.get({ key: this.CACHE_KEY });
 
-    const hasValidLocalCache = !!cachedData;
-
-    if (!force && hasValidLocalCache && lastSyncDate === today) {
-      console.log(`[DataService] App already updated today (${today}) with local cache intact. Skipping network call.`);
+    if (!force && !!cachedData && lastSyncDate === today) {
       return { success: true, message: 'Already updated today', isUpdated: false };
     }
 
-    console.log(`[DataService] Performing daily remote config check for date: ${today}`);
     const result = await this.syncWithRemote();
-
     if (result.success) {
       await Preferences.set({ key: this.LAST_DAILY_SYNC_KEY, value: today });
     }
-
     return result;
   }
 
@@ -215,8 +188,6 @@ export class DataService implements OnDestroy {
         return { success: false, message: 'Remote URL not configured', isUpdated: false };
       }
 
-      console.log('[DataService] Fetching split configuration from remote repository:', endpoint);
-
       let baseDir = endpoint.trim();
       if (!baseDir.endsWith('/')) {
         baseDir = `${baseDir}/`;
@@ -225,24 +196,18 @@ export class DataService implements OnDestroy {
       const cb = `_cb=${Date.now()}`;
 
       const [identity, languages, ui, books, banner, about, schedules] = await Promise.all([
-        firstValueFrom(this.http.get<AppIdentity>(`${baseDir}app_identity.json?${cb}`)),
-        firstValueFrom(this.http.get<SupportedLanguage[]>(`${baseDir}supportedLanguages.json?${cb}`)),
-        firstValueFrom(this.http.get<UiTranslations>(`${baseDir}ui_translations.json?${cb}`)),
-        firstValueFrom(this.http.get<Book[]>(`${baseDir}books.json?${cb}`)),
-        firstValueFrom(
-          this.http.get<any>(`${baseDir}updateBannerMessage.json?${cb}`).pipe(catchError(() => of({})))
-        ),
-        firstValueFrom(
-          this.http
-            .get<AboutInfo>(`${baseDir}about_info.json?${cb}`)
-            .pipe(catchError(() => of({ description: {}, feedback_links: {} })))
-        ),
-        firstValueFrom(
-          this.http
-            .get<NotificationSchedule[]>(`${baseDir}notification_schedules.json?${cb}`)
-            .pipe(catchError(() => of([])))
-        )
+        firstValueFrom(this.http.get<AppIdentity>(`${baseDir}app_identity.json?${cb}`).pipe(catchError(() => of({} as AppIdentity)))),
+        firstValueFrom(this.http.get<SupportedLanguage[]>(`${baseDir}supportedLanguages.json?${cb}`).pipe(catchError(() => of([])))),
+        firstValueFrom(this.http.get<UiTranslations>(`${baseDir}ui_translations.json?${cb}`).pipe(catchError(() => of({})))),
+        firstValueFrom(this.http.get<Book[]>(`${baseDir}books.json?${cb}`).pipe(catchError(() => of([])))),
+        firstValueFrom(this.http.get<any>(`${baseDir}updateBannerMessage.json?${cb}`).pipe(catchError(() => of([])))),
+        firstValueFrom(this.http.get<AboutInfo>(`${baseDir}about_info.json?${cb}`).pipe(catchError(() => of({ description: {}, feedback_links: {} })))),
+        firstValueFrom(this.http.get<NotificationSchedule[]>(`${baseDir}notification_schedules.json?${cb}`).pipe(catchError(() => of([]))))
       ]);
+
+      if (!identity || !books || books.length === 0) {
+        return { success: false, message: 'Empty or invalid response from remote', isUpdated: false };
+      }
 
       const constructedConfig: AppConfig = {
         schemaVersion: 1,
@@ -261,13 +226,12 @@ export class DataService implements OnDestroy {
       if (isUpdated || !this.configSubject.value) {
         await this.saveCachedConfig(constructedConfig);
         this.applyAndPublishConfig(constructedConfig);
-        return { success: true, message: 'Successfully updated from remote', isUpdated: true };
+        return { success: true, message: 'Updated from remote', isUpdated: true };
       }
 
-      return { success: true, message: 'Remote data checked: Already up to date', isUpdated: false };
+      return { success: true, message: 'Already up to date', isUpdated: false };
     } catch (err: any) {
-      console.warn('[DataService] Remote sync failed. Falling back to local cache/assets.', err?.message || err);
-      await this.ensureFallbackLoaded();
+      console.warn('[DataService] Remote sync failed, using cached state:', err?.message || err);
       return { success: false, message: err?.message || 'Remote sync failed', isUpdated: false };
     }
   }
@@ -293,69 +257,29 @@ export class DataService implements OnDestroy {
           return parsed;
         }
       }
-    } catch {
-      // Ignore cache read errors
+    } catch {}
+
+    const relativePath = chapter.contentUrl || `mock/chapters/${bookId}/${chapter.id}.json`;
+    const targetUrl = this.resolveMediaUrl(
+      relativePath.startsWith('mock/') ? relativePath : `mock/${relativePath}`
+    );
+
+    try {
+      const res = await firstValueFrom(this.http.get<any>(`${targetUrl}?_cb=${Date.now()}`));
+      const transcriptMap = res?.transcript || (res && (res.hi || res.gu || res.en) ? res : null);
+
+      if (transcriptMap && Object.keys(transcriptMap).length > 0) {
+        await Preferences.set({
+          key: cacheKey,
+          value: JSON.stringify(transcriptMap)
+        });
+        this.chapterTranscriptCache.set(cacheKey, transcriptMap);
+        return transcriptMap;
+      }
+    } catch (err) {
+      console.warn(`[DataService] Failed loading chapter from: ${targetUrl}`, err);
     }
 
-    const rawFileName = (chapter.contentUrl ? chapter.contentUrl.split('/').pop() : '') || `${chapter.id}.json`;
-    const cleanFileName = rawFileName.replace(/_sg_/g, '_');
-    const sgFileName = cleanFileName.startsWith('ch_') && !cleanFileName.startsWith('ch_sg_')
-      ? cleanFileName.replace(/^ch_/, 'ch_sg_')
-      : cleanFileName;
-
-    const candidateRelativePaths: string[] = [
-      chapter.contentUrl || `mock/chapters/${bookId}/${chapter.id}.json`,
-      `mock/chapters/${bookId}/${sgFileName}`,
-      `mock/chapters/${bookId}/${cleanFileName}`,
-      `assets/mock/chapters/${bookId}/${sgFileName}`,
-      `assets/mock/chapters/${bookId}/${cleanFileName}`
-    ];
-
-    const uniquePaths = Array.from(new Set(candidateRelativePaths));
-
-    for (let pathStr of uniquePaths) {
-      let candidateUrl = '';
-      if (pathStr.startsWith('http://') || pathStr.startsWith('https://')) {
-        candidateUrl = pathStr;
-      } else if (pathStr.startsWith('assets/')) {
-        candidateUrl = pathStr;
-      } else {
-        if (!pathStr.startsWith('mock/')) {
-          pathStr = `mock/${pathStr}`;
-        }
-        candidateUrl = this.resolveMediaUrl(pathStr);
-      }
-
-      const urlsToTry = [candidateUrl];
-      if (candidateUrl.includes('cdn.jsdelivr.net/gh/')) {
-        const rawUrl = candidateUrl
-          .replace('https://cdn.jsdelivr.net/gh/', 'https://raw.githubusercontent.com/')
-          .replace('@', '/');
-        urlsToTry.push(`${rawUrl}?_cb=${Date.now()}`);
-      }
-
-      for (const targetUrl of urlsToTry) {
-        try {
-          console.log('[DataService] Probing chapter transcript URL:', targetUrl);
-          const res = await firstValueFrom(this.http.get<any>(targetUrl));
-          const transcriptMap = res?.transcript || (res && (res.hi || res.gu || res.en) ? res : null);
-
-          if (transcriptMap && Object.keys(transcriptMap).length > 0) {
-            console.log('[DataService] Successfully loaded transcript from:', targetUrl);
-            await Preferences.set({
-              key: cacheKey,
-              value: JSON.stringify(transcriptMap)
-            });
-            this.chapterTranscriptCache.set(cacheKey, transcriptMap);
-            return transcriptMap;
-          }
-        } catch (err: any) {
-          console.warn(`[DataService] Failed probing transcript at ${targetUrl}:`, err?.message || err);
-        }
-      }
-    }
-
-    console.error(`[DataService] Exhausted all candidate URLs for book: ${bookId}, chapter: ${chapter.id}`);
     return {};
   }
 
@@ -363,36 +287,25 @@ export class DataService implements OnDestroy {
     if (!urlOrPath) return '';
     let clean = urlOrPath.trim();
 
-    if (clean.includes('github.com/') && clean.includes('/blob/')) {
-      clean = clean
-        .replace(/^https?:\/\/github\.com\//, 'https://raw.githubusercontent.com/')
-        .replace('/blob/', '/');
-      return clean;
-    }
-
     if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('data:')) {
       return clean;
     }
 
-    const baseUrl = this.configSubject.value?.app_identity?.mediaBaseUrl;
+    const baseUrl = this.configSubject.value?.app_identity?.mediaBaseUrl || environment.firebaseConfigUrl;
     if (!baseUrl) return clean;
 
     let base = baseUrl.replace(/\/+$/, '');
-    const sanitizedPath = clean.replace(/^\/+/, '');
-
-    const isAudio = ['.mp3', '.wav', '.m4a', '.ogg', '.aac'].some(ext => sanitizedPath.toLowerCase().endsWith(ext));
-    if (isAudio && base.includes('cdn.jsdelivr.net/gh/')) {
-      base = base
-        .replace('https://cdn.jsdelivr.net/gh/', 'https://raw.githubusercontent.com/')
-        .replace('@', '/');
+    if (base.endsWith('/mock')) {
+      base = base.replace(/\/mock$/, '');
     }
 
+    const sanitizedPath = clean.replace(/^\/+/, '');
     return `${base}/${sanitizedPath}`;
   }
 
   public localizeField(mapObj: Record<string, string> | undefined, lang: string): string {
     if (!mapObj || typeof mapObj !== 'object') return '';
-    return mapObj[lang] || mapObj['en'] || mapObj['hi'] || Object.values(mapObj)[0] || '';
+    return mapObj[lang] || mapObj['hi'] || mapObj['gu'] || mapObj['en'] || Object.values(mapObj)[0] || '';
   }
 
   public getChapterStream(bookId: string, chapterId: string): Observable<{ book: Book; chapter: Chapter } | null> {
@@ -403,8 +316,7 @@ export class DataService implements OnDestroy {
 
         const targetClean = chapterId.replace(/_sg_/g, '_');
         const chapter = book.chapters.find((c: Chapter) =>
-          c.id === chapterId ||
-          c.id.replace(/_sg_/g, '_') === targetClean
+          c.id === chapterId || c.id.replace(/_sg_/g, '_') === targetClean
         );
         return chapter ? { book, chapter } : null;
       })
@@ -421,51 +333,13 @@ export class DataService implements OnDestroy {
     }
   }
 
-  private async ensureFallbackLoaded(): Promise<void> {
-    if (this.configSubject.value) return;
-
-    try {
-      console.log('[DataService] Loading local split JSON fallback files...');
-      const fallback = await firstValueFrom(
-        forkJoin({
-          identity: this.http.get<AppIdentity>('assets/mock/app_identity.json'),
-          languages: this.http.get<SupportedLanguage[]>('assets/mock/supportedLanguages.json'),
-          ui: this.http.get<UiTranslations>('assets/mock/ui_translations.json'),
-          books: this.http.get<Book[]>('assets/mock/books.json'),
-          banner: this.http.get<any>('assets/mock/updateBannerMessage.json').pipe(catchError(() => of({}))),
-          about: this.http.get<AboutInfo>('assets/mock/about_info.json').pipe(catchError(() => of({ description: {}, feedback_links: {} }))),
-          schedules: this.http.get<NotificationSchedule[]>('assets/mock/notification_schedules.json').pipe(catchError(() => of([])))
-        })
-      );
-
-      const combined: AppConfig = {
-        schemaVersion: 1,
-        lastUpdatedIso: new Date().toISOString(),
-        app_identity: fallback.identity,
-        supportedLanguages: fallback.languages,
-        ui_translations: fallback.ui,
-        books: fallback.books,
-        updateBannerMessage: fallback.banner,
-        about_info: fallback.about,
-        notification_schedules: fallback.schedules
-      };
-
-      this.applyAndPublishConfig(combined);
-      await this.saveCachedConfig(combined);
-    } catch (fallbackErr) {
-      console.error('[DataService] Critical: Failed to load local emergency fallback assets:', fallbackErr);
-    }
-  }
-
   private async loadCachedConfig(): Promise<AppConfig | null> {
     try {
       const { value } = await Preferences.get({ key: this.CACHE_KEY });
       if (value) {
         return JSON.parse(value) as AppConfig;
       }
-    } catch (e) {
-      console.warn('[DataService] Failed to read from persistent cache:', e);
-    }
+    } catch {}
     return null;
   }
 
@@ -475,9 +349,7 @@ export class DataService implements OnDestroy {
         key: this.CACHE_KEY,
         value: JSON.stringify(config)
       });
-    } catch (e) {
-      console.warn('[DataService] Failed to write to persistent cache:', e);
-    }
+    } catch {}
   }
 
   private hasConfigChanged(oldCfg: AppConfig | null, newCfg: AppConfig): boolean {

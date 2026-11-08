@@ -3,9 +3,12 @@ import { Routes, CanActivateFn, Router } from '@angular/router';
 import { StorageService } from './core/services/storage.service';
 import { ShellComponent } from './layout/shell.component';
 
-export const onboardingGuard: CanActivateFn = () => {
+export const onboardingGuard: CanActivateFn = async () => {
   const storageService = inject(StorageService);
   const router = inject(Router);
+
+  // Await local preferences hydration before evaluating route
+  await storageService.isReady();
 
   if (!storageService.hasCompletedOnboardingSnapshot()) {
     return router.createUrlTree(['/onboarding']);
@@ -13,9 +16,23 @@ export const onboardingGuard: CanActivateFn = () => {
   return true;
 };
 
+export const alreadyOnboardedGuard: CanActivateFn = async () => {
+  const storageService = inject(StorageService);
+  const router = inject(Router);
+
+  await storageService.isReady();
+
+  // If already onboarded, don't allow returning to onboarding on cold boot
+  if (storageService.hasCompletedOnboardingSnapshot()) {
+    return router.createUrlTree(['/dashboard']);
+  }
+  return true;
+};
+
 export const routes: Routes = [
   {
     path: 'onboarding',
+    canActivate: [alreadyOnboardedGuard],
     loadComponent: () =>
       import('./pages/onboarding/onboarding.page').then(m => m.OnboardingPage)
   },

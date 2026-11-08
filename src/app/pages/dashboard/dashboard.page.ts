@@ -47,6 +47,7 @@ import { Book } from '../../core/models/app-config.model';
       (searchChange)="onSearchQueryChange($event)">
     </app-header>
 
+    <!-- Notification Banner (Collapses completely with 0px residue) -->
     <div
       class="sticky-notification-banner"
       *ngIf="(updateBanner$ | async) as bannerText"
@@ -81,7 +82,6 @@ import { Book } from '../../core/models/app-config.model';
               class="book-card"
               [style.--book-watermark]="'url(' + getCoverWatermarkUrl(book) + ')'"
               (click)="openBookChapters(book.id)">
-              <!-- Dynamic Cover Photo Watermark Background (20% Opacity Full Card) -->
               <div class="book-watermark-overlay" aria-hidden="true"></div>
 
               <div class="book-card-content">
@@ -89,8 +89,7 @@ import { Book } from '../../core/models/app-config.model';
                   <h2 class="book-card-title">{{ localize(book.title) }}</h2>
                   <ion-icon name="arrow-forward-outline" class="action-arrow"></ion-icon>
                 </div>
-                
-                <!-- 2-Line Clamped Description/Subtitle -->
+
                 <p *ngIf="book.subtitle" class="book-card-subtitle">{{ localize(book.subtitle) }}</p>
 
                 <div class="chapter-count-badge">
@@ -105,7 +104,7 @@ import { Book } from '../../core/models/app-config.model';
             <div class="empty-search-box">
               <ion-icon name="book-outline" class="empty-book-icon"></ion-icon>
               <h3 class="empty-search-title">No books match "{{ currentSearchQuery }}"</h3>
-              <p class="empty-search-hint">Try searching with a different title in Hindi, Gujarati, or English</p>
+              <p class="empty-search-hint">Try searching in Hindi, Gujarati, or English</p>
             </div>
           </ion-col>
         </ion-row>
@@ -114,9 +113,6 @@ import { Book } from '../../core/models/app-config.model';
   `,
   styles: [`
     .sticky-notification-banner {
-      position: sticky;
-      top: 0;
-      z-index: 50;
       display: flex;
       align-items: flex-start;
       gap: 10px;
@@ -127,29 +123,30 @@ import { Book } from '../../core/models/app-config.model';
       font-weight: 500;
       font-size: 0.92rem;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-
-      height: auto;
-      min-height: fit-content;
-      max-height: 25vh;
       box-sizing: border-box;
+      max-height: 25vh;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
-
-      transition: transform 0.28s ease, opacity 0.28s ease, max-height 0.28s ease, padding 0.28s ease;
-      transform: translateY(0);
+      transition: max-height 0.25s ease, padding 0.25s ease, opacity 0.2s ease, border-bottom-width 0.25s ease;
       opacity: 1;
+      visibility: visible;
     }
 
+    /* Fixed: Zero residual height, padding, margin, or border */
     .sticky-notification-banner.banner-hidden {
-      transform: translateY(-100%);
-      max-height: 0;
-      height: 0;
-      padding-top: 0;
-      padding-bottom: 0;
-      opacity: 0;
-      pointer-events: none;
-      border-bottom-width: 0;
-      overflow: hidden;
+      max-height: 0 !important;
+      min-height: 0 !important;
+      height: 0 !important;
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+      margin: 0 !important;
+      border-bottom-width: 0 !important;
+      border-top-width: 0 !important;
+      box-shadow: none !important;
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+      overflow: hidden !important;
     }
 
     .banner-icon {
@@ -191,7 +188,6 @@ import { Book } from '../../core/models/app-config.model';
       padding-bottom: 0;
     }
 
-    /* 25% viewport height minus grid/gutter vertical clearance */
     .book-card {
       position: relative;
       border-radius: 18px;
@@ -202,9 +198,6 @@ import { Book } from '../../core/models/app-config.model';
       background: var(--ion-card-background, #fff8ec);
       border: 1px solid rgba(var(--ion-color-primary-rgb), 0.18);
       cursor: pointer;
-
-      /* Fits 3 cards in view */
-      height: calc(25vh - 12px);
       min-height: 140px;
       display: flex;
       align-items: center;
@@ -215,7 +208,6 @@ import { Book } from '../../core/models/app-config.model';
       }
     }
 
-    /* Cover Photo Watermark: covers entire card at 20% opacity */
     .book-watermark-overlay {
       position: absolute;
       inset: 0;
@@ -232,7 +224,7 @@ import { Book } from '../../core/models/app-config.model';
       position: relative;
       z-index: 1;
       width: 100%;
-      padding: 12px 18px;
+      padding: 14px 18px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -252,10 +244,12 @@ import { Book } from '../../core/models/app-config.model';
       font-weight: 800;
       color: var(--ion-color-primary);
       margin: 0;
-      line-height: 1.25;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: nowrap;
       flex: 1;
     }
 
@@ -265,31 +259,28 @@ import { Book } from '../../core/models/app-config.model';
       flex-shrink: 0;
     }
 
-    /* 2-line clamp for description/subtitle */
     .book-card-subtitle {
-      margin: 4px 0 8px 0;
-      font-size: 0.85rem;
+      margin: 6px 0 10px 0;
+      font-size: 0.88rem;
       color: var(--ion-color-medium);
-      line-height: 1.3;
+      line-height: 1.35;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: normal;
-      word-break: break-word;
     }
 
     .chapter-count-badge {
       align-self: flex-start;
       display: inline-flex;
       align-items: center;
-      gap: 5px;
+      gap: 6px;
       background: rgba(var(--ion-color-primary-rgb), 0.12);
       color: var(--ion-color-primary);
-      padding: 3px 10px;
+      padding: 4px 12px;
       border-radius: 16px;
-      font-size: 0.78rem;
+      font-size: 0.8rem;
       font-weight: 700;
     }
 
@@ -408,9 +399,9 @@ export class DashboardPage implements OnInit, OnDestroy {
 
     if (currentScrollTop <= 15) {
       this.isBannerHidden = false;
-    } else if (currentScrollTop > this.lastScrollTop + 10 && currentScrollTop > 40) {
+    } else if (currentScrollTop > this.lastScrollTop + 15 && currentScrollTop > 50) {
       this.isBannerHidden = true;
-    } else if (currentScrollTop < this.lastScrollTop - 10) {
+    } else if (currentScrollTop < this.lastScrollTop - 15) {
       this.isBannerHidden = false;
     }
 

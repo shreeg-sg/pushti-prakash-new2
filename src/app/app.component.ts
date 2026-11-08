@@ -6,6 +6,7 @@ import { IonApp, IonRouterOutlet } from '@ionic/angular/standalone';
 import { StorageService } from './core/services/storage.service';
 import { DataService } from './core/services/data.service';
 import { BackButtonService } from './core/services/back-button.service';
+import { NotificationService } from './core/services/notification.service';
 
 @Component({
   selector: 'app-root',
@@ -24,20 +25,24 @@ export class AppComponent implements OnInit {
     private router: Router,
     private storageService: StorageService,
     private dataService: DataService,
-    private backButtonService: BackButtonService
+    private backButtonService: BackButtonService,
+    private notificationService: NotificationService
   ) {}
 
   async ngOnInit(): Promise<void> {
-    // 1. Hydrate local user preferences (language, font scale, bookmarks, onboarding flag)
+    // 1. Register notification tap listener immediately on app boot
+    await this.notificationService.initialize();
+
+    // 2. Hydrate local user preferences (language, font size, bookmarks)
     await this.storageService.initialize();
 
-    // 2. Load cached Firebase JSON & start network-first hot-update + resume listener
+    // 3. Load config and sync daily
     await this.dataService.initialize();
 
-    // 3. Initialize hardware back-button listener (double-tap root exit, single-tap back)
+    // 4. Initialize hardware back-button listener
     this.backButtonService.initialize();
 
-    // 4. Route to Onboarding if first launch
+    // 5. Route to Onboarding if first launch
     this.isAppReady = true;
     if (!this.storageService.hasCompletedOnboardingSnapshot()) {
       await this.router.navigate(['/onboarding'], { replaceUrl: true });
