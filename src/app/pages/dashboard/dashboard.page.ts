@@ -21,7 +21,7 @@ import { Observable, Subscription, BehaviorSubject, combineLatest } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { HeaderComponent } from '../../layout/header.component';
-import { DataService } from '../../core/services/data.service';
+import { DataService, ActiveBannerView } from '../../core/services/data.service';
 import { StorageService } from '../../core/services/storage.service';
 import { Book } from '../../core/models/app-config.model';
 
@@ -47,19 +47,7 @@ import { Book } from '../../core/models/app-config.model';
       (searchChange)="onSearchQueryChange($event)">
     </app-header>
 
-    <!-- Notification Banner (Collapses completely with 0px residue) -->
-    <div
-      class="sticky-notification-banner"
-      *ngIf="(updateBanner$ | async) as bannerText"
-      [class.banner-hidden]="isBannerHidden">
-      <ion-icon name="sparkles-outline" class="banner-icon"></ion-icon>
-      <span class="banner-text" [innerHTML]="bannerText"></span>
-    </div>
-
-    <ion-content
-      [scrollEvents]="true"
-      (ionScroll)="onDashboardScroll($event)"
-      class="ion-padding dashboard-content">
+    <ion-content class="ion-padding dashboard-content">
       <div
         class="watermark-overlay"
         *ngIf="watermarkUrl$ | async as wmUrl"
@@ -70,6 +58,28 @@ import { Book } from '../../core/models/app-config.model';
       <ion-refresher slot="fixed" (ionRefresh)="onPullRefresh($event)">
         <ion-refresher-content></ion-refresher-content>
       </ion-refresher>
+
+      <!-- Smooth Announcement Cards (Zero-Flicker Inside Content) -->
+      <div class="notification-banner-container" *ngIf="(activeBanners$ | async) as banners">
+        <div
+          class="banner-item-card"
+          *ngFor="let banner of banners; trackBy: trackByBannerId"
+          [class.clickable-banner]="!!banner.targetBookId"
+          (click)="onBannerClick(banner)">
+          
+          <div class="banner-left-meta">
+            <ion-icon name="sparkles-outline" class="banner-icon"></ion-icon>
+            <span class="banner-new-badge" *ngIf="banner.isNew">NEW</span>
+          </div>
+
+          <span class="banner-text" [innerHTML]="banner.messageHtml"></span>
+
+          <div class="banner-action-chip" *ngIf="banner.targetBookId">
+            <span>{{ banner.actionLabel || 'Read Now' }}</span>
+            <ion-icon name="arrow-forward-outline"></ion-icon>
+          </div>
+        </div>
+      </div>
 
       <ion-grid fixed class="books-grid">
         <ion-row *ngIf="filteredBooks$ | async as books">
@@ -112,58 +122,98 @@ import { Book } from '../../core/models/app-config.model';
     </ion-content>
   `,
   styles: [`
-    .sticky-notification-banner {
+    .dashboard-content {
+      position: relative;
+    }
+
+    /* Zero-Flicker Announcement Card Container */
+    .notification-banner-container {
       display: flex;
-      align-items: flex-start;
+      flex-direction: column;
       gap: 10px;
-      background: rgba(var(--ion-color-secondary-rgb), 0.22);
-      border-bottom: 2px solid var(--ion-color-primary);
+      margin: 0 auto 16px auto;
+      max-width: 960px;
+      width: 100%;
+      position: relative;
+      z-index: 2;
+    }
+
+    .banner-item-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--ion-card-background, #fff8ec);
+      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.22);
+      border-left: 5px solid var(--ion-color-primary);
+      border-radius: 14px;
       padding: 10px 16px;
       color: var(--ion-text-color, #2c1810);
       font-weight: 500;
       font-size: 0.92rem;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
       box-sizing: border-box;
-      max-height: 25vh;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      transition: max-height 0.25s ease, padding 0.25s ease, opacity 0.2s ease, border-bottom-width 0.25s ease;
-      opacity: 1;
-      visibility: visible;
+      transition: transform 0.18s ease;
     }
 
-    /* Fixed: Zero residual height, padding, margin, or border */
-    .sticky-notification-banner.banner-hidden {
-      max-height: 0 !important;
-      min-height: 0 !important;
-      height: 0 !important;
-      padding-top: 0 !important;
-      padding-bottom: 0 !important;
-      margin: 0 !important;
-      border-bottom-width: 0 !important;
-      border-top-width: 0 !important;
-      box-shadow: none !important;
-      opacity: 0 !important;
-      visibility: hidden !important;
-      pointer-events: none !important;
-      overflow: hidden !important;
+    .banner-item-card.clickable-banner {
+      cursor: pointer;
+
+      &:active {
+        transform: scale(0.99);
+      }
+    }
+
+    .banner-left-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
     }
 
     .banner-icon {
-      font-size: 1.3rem;
+      font-size: 1.25rem;
       color: var(--ion-color-primary);
-      flex-shrink: 0;
-      margin-top: 2px;
+    }
+
+    .banner-new-badge {
+      background: var(--ion-color-primary, #8B2635);
+      color: #ffffff;
+      font-size: 0.68rem;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 6px;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
     }
 
     .banner-text {
       flex: 1;
-      line-height: 1.45;
+      line-height: 1.4;
       white-space: pre-line;
     }
 
-    .dashboard-content {
-      position: relative;
+    .banner-action-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--ion-color-primary, #8B2635);
+      color: #ffffff;
+      padding: 5px 12px;
+      border-radius: 14px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      transition: opacity 0.2s ease;
+      white-space: nowrap;
+
+      &:active {
+        opacity: 0.8;
+      }
+
+      ion-icon {
+        font-size: 0.9rem;
+      }
     }
 
     .watermark-overlay {
@@ -317,15 +367,11 @@ export class DashboardPage implements OnInit, OnDestroy {
   private storageService = inject(StorageService);
 
   public visibleBooks$: Observable<Book[]> = this.dataService.visibleBooks$;
-  public updateBanner$: Observable<string | null> = this.dataService.updateBanner$;
+  public activeBanners$: Observable<ActiveBannerView[]> = this.dataService.activeBanners$;
   public watermarkUrl$: Observable<string> = this.dataService.watermarkUrl$;
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
 
-  public isBannerHidden = false;
-  private lastScrollTop = 0;
-  private hasBooks = false;
   private currentLang = 'hi';
-
   public currentSearchQuery = '';
   private searchSubject = new BehaviorSubject<string>('');
 
@@ -346,7 +392,6 @@ export class DashboardPage implements OnInit, OnDestroy {
   );
 
   private langSub?: Subscription;
-  private booksSub?: Subscription;
 
   constructor() {
     addIcons({
@@ -361,13 +406,20 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.langSub = this.storageService.selectedLanguage$.subscribe(lang => {
       this.currentLang = lang;
     });
+  }
 
-    this.booksSub = this.filteredBooks$.subscribe(books => {
-      this.hasBooks = !!(books && books.length > 0);
-      if (!this.hasBooks) {
-        this.isBannerHidden = false;
-      }
-    });
+  public onBannerClick(banner: ActiveBannerView): void {
+    if (!banner.targetBookId) return;
+
+    if (banner.targetChapterId) {
+      this.router.navigate(['/reader', banner.targetBookId, banner.targetChapterId]);
+    } else {
+      this.router.navigate(['/chapters', banner.targetBookId]);
+    }
+  }
+
+  public trackByBannerId(_index: number, banner: ActiveBannerView): string {
+    return banner.id;
   }
 
   public onSearchQueryChange(query: string): void {
@@ -389,25 +441,6 @@ export class DashboardPage implements OnInit, OnDestroy {
     return this.dataService.resolveMediaUrl(book.coverImageUrl);
   }
 
-  public onDashboardScroll(event: CustomEvent): void {
-    if (!this.hasBooks) {
-      this.isBannerHidden = false;
-      return;
-    }
-
-    const currentScrollTop = event.detail.scrollTop;
-
-    if (currentScrollTop <= 15) {
-      this.isBannerHidden = false;
-    } else if (currentScrollTop > this.lastScrollTop + 15 && currentScrollTop > 50) {
-      this.isBannerHidden = true;
-    } else if (currentScrollTop < this.lastScrollTop - 15) {
-      this.isBannerHidden = false;
-    }
-
-    this.lastScrollTop = currentScrollTop;
-  }
-
   public async onPullRefresh(event: CustomEvent): Promise<void> {
     await this.dataService.syncWithRemote();
     (event.target as HTMLIonRefresherElement).complete();
@@ -427,6 +460,5 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.langSub?.unsubscribe();
-    this.booksSub?.unsubscribe();
   }
 }

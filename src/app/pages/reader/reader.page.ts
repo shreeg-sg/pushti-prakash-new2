@@ -75,13 +75,25 @@ import { Book, Chapter } from '../../core/models/app-config.model';
         <div class="book-breadcrumb">{{ localize(activeBook.title) }}</div>
         <h1 class="chapter-heading">{{ localize(activeChapter.title) }}</h1>
 
+        <!-- Center-Aligned Chapter Header Images (1 After Another) -->
+        <div class="chapter-images-list" *ngIf="chapterImages.length > 0 && !isLoadingTranscript">
+          <div class="chapter-image-wrapper" *ngFor="let imgUrl of chapterImages">
+            <img
+              [src]="imgUrl"
+              alt="Chapter Illustration"
+              class="chapter-featured-img"
+              loading="lazy"
+              (error)="onImageLoadError(imgUrl)" />
+          </div>
+        </div>
+
         <!-- Loading State -->
         <div class="transcript-loading" *ngIf="isLoadingTranscript">
           <ion-spinner name="crescent" color="primary"></ion-spinner>
           <p class="loading-label">Loading sacred text...</p>
         </div>
 
-        <!-- Failure State with Retry -->
+        <!-- Error State with Retry -->
         <div class="transcript-error" *ngIf="!isLoadingTranscript && transcriptParagraphs.length === 0">
           <p class="error-msg">Unable to load chapter content from media server.</p>
           <ion-button fill="outline" color="primary" (click)="retryLoadTranscript()">
@@ -90,7 +102,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
           </ion-button>
         </div>
 
-        <!-- Text Content: Standard Verse & Stanza Layout -->
+        <!-- Text Content -->
         <div class="transcript-content" *ngIf="!isLoadingTranscript && transcriptParagraphs.length > 0">
           <p
             *ngFor="let paragraph of transcriptParagraphs"
@@ -240,6 +252,35 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       padding-bottom: 10px;
     }
 
+    /* Center-Aligned Chapter Header Images */
+    .chapter-images-list {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin: 10px auto 22px;
+      width: 100%;
+    }
+
+    .chapter-image-wrapper {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+
+    .chapter-featured-img {
+      max-width: 100%;
+      max-height: 380px;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      border-radius: 14px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.12);
+      background: var(--ion-card-background, #fff8ec);
+    }
+
     .transcript-loading,
     .transcript-error {
       display: flex;
@@ -257,12 +298,11 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       font-weight: 500;
     }
 
-    /* Standard Verse Typography & Spacing */
     .transcript-paragraph {
       font-size: var(--app-reader-font-size, 1.08rem);
       line-height: var(--app-reader-line-height, 1.65);
       margin-top: 0;
-      margin-bottom: 14px; /* Standard 14px gap between verses */
+      margin-bottom: 14px;
       padding: 6px 10px;
       border-radius: 8px;
       white-space: pre-line;
@@ -408,6 +448,7 @@ export class ReaderPage implements OnInit, OnDestroy {
   public activeChapter?: Chapter;
   public activeChapterTitle = '';
   public transcriptParagraphs: string[] = [];
+  public chapterImages: string[] = [];
   public isLoadingTranscript = false;
   public prevChapterId?: string;
   public nextChapterId?: string;
@@ -475,12 +516,13 @@ export class ReaderPage implements OnInit, OnDestroy {
     ttsLocale: string
   ): Promise<void> {
     this.isLoadingTranscript = true;
-    const transcriptMap = await this.dataService.loadChapterTranscript(book.id, chapter);
+    const content = await this.dataService.loadChapterContent(book.id, chapter);
     this.isLoadingTranscript = false;
 
-    const rawTranscript = this.dataService.localizeField(transcriptMap, lang);
+    // Resolve images
+    this.chapterImages = (content.images || []).map(img => this.dataService.resolveMediaUrl(img));
 
-    // Splits into natural verses / stanzas by double newlines (not individual lines)
+    const rawTranscript = this.dataService.localizeField(content.transcript, lang);
     this.transcriptParagraphs = rawTranscript
       .split(/\n\s*\n/g)
       .map(p => p.trim())
@@ -509,6 +551,11 @@ export class ReaderPage implements OnInit, OnDestroy {
       this.shouldAutoPlayNext
     );
     this.shouldAutoPlayNext = false;
+  }
+
+  public onImageLoadError(failedUrl: string): void {
+    console.warn('[ReaderPage] Could not load image from:', failedUrl);
+    this.chapterImages = this.chapterImages.filter(url => url !== failedUrl);
   }
 
   public async retryLoadTranscript(): Promise<void> {

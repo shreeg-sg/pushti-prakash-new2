@@ -55,11 +55,13 @@ export interface Chapter {
   durationSeconds?: number;
   transcript?: LocalizedStringMap;
   contentUrl?: string;
+  images?: string[]; // Optional: Chapter header images (multiple, center aligned)
 }
 
 export interface ChapterContentPayload {
   id: string;
   bookId?: string;
+  images?: string[]; // Optional: Images defined inside individual chapter JSON
   transcript: LocalizedStringMap;
 }
 
@@ -88,12 +90,16 @@ export interface NotificationSchedule {
 
 export interface BannerItem {
   id?: string;
-  date?: string;          // YYYY-MM-DD
-  startDate?: string;     // YYYY-MM-DD
-  endDate?: string;       // YYYY-MM-DD
+  date?: string; // YYYY-MM-DD
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
   isEnabled?: boolean;
   isDefault?: boolean;
+  isNew?: boolean; // NEW: Highlights banner with a pulsating "NEW" tag
   message: LocalizedStringMap;
+  targetBookId?: string; // NEW: Routes directly to book or chapter
+  targetChapterId?: string; // NEW: Direct chapter link
+  actionLabel?: LocalizedStringMap; // NEW: Button text e.g. "Read Now" / "पढ़ें"
 }
 
 export interface AppConfigPayload {
@@ -108,5 +114,4 @@ export interface AppConfigPayload {
   notification_schedules?: NotificationSchedule[];
 }
 
-// Alias for backwards & forwards compatibility
 export type AppConfig = AppConfigPayload;

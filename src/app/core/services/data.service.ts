@@ -1,6 +1,6 @@
 import { Injectable, NgZone, OnDestroy, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable, combineLatest, firstValueFrom, forkJoin, of } from 'rxjs';
+import { BehaviorSubject, Observable, combineLatest, firstValueFrom, of } from 'rxjs';
 import { map, filter, catchError } from 'rxjs/operators';
 import { App, AppState } from '@capacitor/app';
 import { Preferences } from '@capacitor/preferences';
@@ -21,6 +21,20 @@ import { ThemeService } from './theme.service';
 import { StorageService } from './storage.service';
 import { NotificationService } from './notification.service';
 
+export interface ActiveBannerView {
+  id: string;
+  messageHtml: string;
+  isNew: boolean;
+  targetBookId?: string;
+  targetChapterId?: string;
+  actionLabel?: string;
+}
+
+export interface ChapterLoadedContent {
+  transcript: Record<string, string>;
+  images: string[];
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -40,25 +54,31 @@ export class DataService implements OnDestroy {
     filter((cfg): cfg is AppConfig => cfg !== null)
   );
 
-  private chapterTranscriptCache = new Map<string, Record<string, string>>();
+  private chapterContentCache = new Map<string, ChapterLoadedContent>();
   private appStateListener?: PluginListenerHandle;
 
   public readonly identity$: Observable<AppIdentity> = this.config$.pipe(
     map((cfg: AppConfig) => cfg.app_identity)
   );
 
-  public readonly updateBanner$: Observable<string | null> = combineLatest([
+  // Emits ALL active & eligible banners for today
+  public readonly activeBanners$: Observable<ActiveBannerView[]> = combineLatest([
     this.config$,
     this.storageService.selectedLanguage$
   ]).pipe(
     map(([cfg, lang]: [AppConfig, string]) => {
-      if (!cfg?.updateBannerMessage) return null;
-      return this.resolveDateAwareBanner(cfg.updateBannerMessage, lang);
+      if (!cfg?.updateBannerMessage) return [];
+      return this.resolveAllEligibleBanners(cfg.updateBannerMessage, lang);
     })
   );
 
-  public resolveDateAwareBanner(bannerData: any, lang: string): string | null {
-    if (!bannerData) return null;
+  // Backward-compatible single banner observable
+  public readonly updateBanner$: Observable<string | null> = this.activeBanners$.pipe(
+    map(banners => (banners.length > 0 ? banners[0].messageHtml : null))
+  );
+
+  public resolveAllEligibleBanners(bannerData: any, lang: string): ActiveBannerView[] {
+    if (!bannerData) return [];
 
     const d = new Date();
     const year = d.getFullYear();
@@ -66,47 +86,64 @@ export class DataService implements OnDestroy {
     const day = String(d.getDate()).padStart(2, '0');
     const today = `${year}-${month}-${day}`;
 
+    const rawEligibleItems: any[] = [];
+
     if (Array.isArray(bannerData)) {
-      const exactMatch = bannerData.find((item: any) => item?.isEnabled !== false && item?.date === today);
-      if (exactMatch) {
-        return this.localizeField(exactMatch.message || exactMatch, lang) || null;
+      for (const item of bannerData) {
+        if (!item || item.isEnabled === false) continue;
+
+        // 1. Specific single-date match
+        if (item.date && item.date === today) {
+          rawEligibleItems.push(item);
+          continue;
+        }
+
+        // 2. Active date range match
+        if (item.startDate || item.endDate) {
+          const start = item.startDate;
+          const end = item.endDate;
+          const isAfterStart = !start || today >= start;
+          const isBeforeEnd = !end || today <= end;
+          if (isAfterStart && isBeforeEnd) {
+            rawEligibleItems.push(item);
+            continue;
+          }
+        }
+
+        // 3. Persistent default messages
+        if (item.isDefault || item.date === 'default') {
+          rawEligibleItems.push(item);
+        }
       }
-
-      const rangeMatch = bannerData.find((item: any) => {
-        if (item?.isEnabled === false) return false;
-        const start = item?.startDate;
-        const end = item?.endDate;
-        if (start && end) return today >= start && today <= end;
-        if (start && !end) return today >= start;
-        if (!start && end) return today <= end;
-        return false;
-      });
-      if (rangeMatch) {
-        return this.localizeField(rangeMatch.message || rangeMatch, lang) || null;
-      }
-
-      const defaultItem = bannerData.find((item: any) => item?.isDefault || item?.date === 'default');
-      if (defaultItem) {
-        return this.localizeField(defaultItem.message || defaultItem, lang) || null;
-      }
-
-      return null;
-    }
-
-    if (typeof bannerData === 'object') {
+    } else if (typeof bannerData === 'object') {
       if (bannerData[today]) {
-        return this.localizeField(bannerData[today], lang) || null;
-      }
-      if (bannerData.default) {
-        return this.localizeField(bannerData.default, lang) || null;
-      }
-      const keys = Object.keys(bannerData);
-      if (['hi', 'gu', 'en', 'mr'].some(k => keys.includes(k))) {
-        return this.localizeField(bannerData, lang) || null;
+        rawEligibleItems.push({ message: bannerData[today] });
+      } else if (bannerData.default) {
+        rawEligibleItems.push({ message: bannerData.default });
+      } else {
+        rawEligibleItems.push({ message: bannerData });
       }
     }
 
-    return null;
+    const results: ActiveBannerView[] = [];
+    let counter = 1;
+
+    for (const item of rawEligibleItems) {
+      const msg = item.message ? this.localizeField(item.message, lang) : this.localizeField(item, lang);
+
+      if (msg && msg.trim().length > 0) {
+        results.push({
+          id: item.id ? String(item.id) : `banner_${counter++}`,
+          messageHtml: msg,
+          isNew: item.isNew === true,
+          targetBookId: item.targetBookId,
+          targetChapterId: item.targetChapterId,
+          actionLabel: item.actionLabel ? this.localizeField(item.actionLabel, lang) : undefined
+        });
+      }
+    }
+
+    return results;
   }
 
   public readonly enabledLanguages$: Observable<SupportedLanguage[]> = this.config$.pipe(
@@ -206,7 +243,7 @@ export class DataService implements OnDestroy {
       ]);
 
       if (!identity || !books || books.length === 0) {
-        return { success: false, message: 'Empty or invalid response from remote', isUpdated: false };
+        return { success: false, message: 'Empty remote manifest', isUpdated: false };
       }
 
       const constructedConfig: AppConfig = {
@@ -236,25 +273,26 @@ export class DataService implements OnDestroy {
     }
   }
 
-  public async loadChapterTranscript(bookId: string, chapter: Chapter): Promise<Record<string, string>> {
-    if (chapter.transcript && Object.keys(chapter.transcript).length > 0) {
-      return chapter.transcript;
-    }
-
+  public async loadChapterContent(bookId: string, chapter: Chapter): Promise<ChapterLoadedContent> {
     const cacheKey = `${this.CHAPTER_CACHE_PREFIX}${bookId}_${chapter.id}`;
 
-    if (this.chapterTranscriptCache.has(cacheKey)) {
-      const mem = this.chapterTranscriptCache.get(cacheKey)!;
-      if (mem && Object.keys(mem).length > 0) return mem;
+    if (this.chapterContentCache.has(cacheKey)) {
+      return this.chapterContentCache.get(cacheKey)!;
     }
 
+    // Check disk storage
     try {
       const { value } = await Preferences.get({ key: cacheKey });
       if (value) {
         const parsed = JSON.parse(value);
-        if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-          this.chapterTranscriptCache.set(cacheKey, parsed);
-          return parsed;
+        if (parsed) {
+          const transcript = parsed.transcript || (parsed.hi || parsed.gu || parsed.en ? parsed : {});
+          const images = Array.isArray(parsed.images) ? parsed.images : (chapter.images || []);
+          if (Object.keys(transcript).length > 0) {
+            const result: ChapterLoadedContent = { transcript, images };
+            this.chapterContentCache.set(cacheKey, result);
+            return result;
+          }
         }
       }
     } catch {}
@@ -266,21 +304,42 @@ export class DataService implements OnDestroy {
 
     try {
       const res = await firstValueFrom(this.http.get<any>(`${targetUrl}?_cb=${Date.now()}`));
-      const transcriptMap = res?.transcript || (res && (res.hi || res.gu || res.en) ? res : null);
+      const transcriptMap = res?.transcript || (res && (res.hi || res.gu || res.en) ? res : {});
 
-      if (transcriptMap && Object.keys(transcriptMap).length > 0) {
+      // Parse images from chapter JSON, falling back to books.json chapter metadata
+      let imagesList: string[] = [];
+      if (res?.images && Array.isArray(res.images)) {
+        imagesList = res.images;
+      } else if (res?.image) {
+        imagesList = [res.image];
+      } else if (chapter.images && Array.isArray(chapter.images)) {
+        imagesList = chapter.images;
+      }
+
+      const contentPayload: ChapterLoadedContent = {
+        transcript: transcriptMap,
+        images: imagesList
+      };
+
+      if (Object.keys(transcriptMap).length > 0) {
         await Preferences.set({
           key: cacheKey,
-          value: JSON.stringify(transcriptMap)
+          value: JSON.stringify(contentPayload)
         });
-        this.chapterTranscriptCache.set(cacheKey, transcriptMap);
-        return transcriptMap;
+        this.chapterContentCache.set(cacheKey, contentPayload);
+        return contentPayload;
       }
     } catch (err) {
       console.warn(`[DataService] Failed loading chapter from: ${targetUrl}`, err);
     }
 
-    return {};
+    return { transcript: {}, images: chapter.images || [] };
+  }
+
+  // Compatibility helper
+  public async loadChapterTranscript(bookId: string, chapter: Chapter): Promise<Record<string, string>> {
+    const content = await this.loadChapterContent(bookId, chapter);
+    return content.transcript;
   }
 
   public resolveMediaUrl(urlOrPath: string | undefined): string {
