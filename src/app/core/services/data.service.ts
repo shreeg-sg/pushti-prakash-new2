@@ -256,7 +256,6 @@ export class DataService implements OnDestroy {
       const isUpdated = this.hasConfigChanged(this.configSubject.value, constructedConfig);
 
       if (isUpdated || !this.configSubject.value) {
-        // Clear memory cache so newly updated images on remote show immediately
         this.chapterContentCache.clear();
         await this.saveCachedConfig(constructedConfig);
         this.applyAndPublishConfig(constructedConfig);
@@ -273,7 +272,6 @@ export class DataService implements OnDestroy {
   public async loadChapterContent(bookId: string, chapter: Chapter): Promise<ChapterLoadedContent> {
     const cacheKey = `${this.CHAPTER_CACHE_PREFIX}${bookId}_${chapter.id}`;
 
-    // 1. Check in-memory cache
     if (this.chapterContentCache.has(cacheKey)) {
       const cached = this.chapterContentCache.get(cacheKey)!;
       if (cached.images.length > 0) {
@@ -281,14 +279,12 @@ export class DataService implements OnDestroy {
       }
     }
 
-    // 2. Check disk storage
     try {
       const { value } = await Preferences.get({ key: cacheKey });
       if (value) {
         const parsed = JSON.parse(value);
         if (parsed) {
           const transcript = parsed.transcript || (parsed.hi || parsed.gu || parsed.en ? parsed : {});
-          // If disk cache already has images, return immediately
           if (Array.isArray(parsed.images) && parsed.images.length > 0) {
             const result: ChapterLoadedContent = { transcript, images: parsed.images };
             this.chapterContentCache.set(cacheKey, result);
@@ -298,7 +294,6 @@ export class DataService implements OnDestroy {
       }
     } catch {}
 
-    // 3. Fetch fresh from remote repository to capture newly added images
     const relativePath = chapter.contentUrl || `mock/chapters/${bookId}/${chapter.id}.json`;
     const targetUrl = this.resolveMediaUrl(
       relativePath.startsWith('mock/') ? relativePath : `mock/${relativePath}`
@@ -308,7 +303,6 @@ export class DataService implements OnDestroy {
       const res = await firstValueFrom(this.http.get<any>(`${targetUrl}?_cb=${Date.now()}`));
       const transcriptMap = res?.transcript || (res && (res.hi || res.gu || res.en) ? res : {});
 
-      // Parse images from chapter JSON or books.json
       let imagesList: string[] = [];
       if (res?.images && Array.isArray(res.images)) {
         imagesList = res.images;
@@ -351,7 +345,12 @@ export class DataService implements OnDestroy {
       return clean;
     }
 
-    const baseUrl = this.configSubject.value?.app_identity?.mediaBaseUrl || environment.firebaseConfigUrl;
+    // Resolves against app_identity.json mediaBaseUrl, or environment active provider default
+    const baseUrl =
+      this.configSubject.value?.app_identity?.mediaBaseUrl ||
+      environment.defaultMediaBaseUrl ||
+      environment.firebaseConfigUrl;
+
     if (!baseUrl) return clean;
 
     let base = baseUrl.replace(/\/+$/, '');
@@ -361,7 +360,7 @@ export class DataService implements OnDestroy {
 
     let sanitizedPath = clean.replace(/^\/+/, '');
 
-    // Auto-fix: if an image filename is provided without 'images/' prefix, automatically prepend 'images/'
+    // Auto-fix for images without the 'images/' prefix
     if (
       !sanitizedPath.startsWith('images/') &&
       !sanitizedPath.startsWith('audio/') &&
