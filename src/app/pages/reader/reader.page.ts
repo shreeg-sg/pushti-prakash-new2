@@ -572,6 +572,8 @@ export class ReaderPage implements OnInit, OnDestroy {
 
   public onImageLoadError(failedUrl: string): void {
     console.warn('[ReaderPage] Could not load image from:', failedUrl);
+    // Automatically removes broken URL from the array to prevent browser broken-icon placeholder
+    this.chapterImages = this.chapterImages.filter(url => url !== failedUrl);
   }
 
   public async retryLoadTranscript(): Promise<void> {

@@ -1,6 +1,6 @@
 export type StorageProvider = 'jsdelivr' | 'github_raw' | 'cloudflare' | 'firebase';
 
-// Change here for manual production builds: 'jsdelivr' | 'github_raw' | 'cloudflare' | 'firebase'
+// Production default set to 'jsdelivr' to avoid GitHub 60 req/hr IP blocks
 const PROD_ACTIVE_PROVIDER: StorageProvider = 'github_raw';
 
 const PROD_PROVIDER_CONFIGS: Record<StorageProvider, { configUrl: string; mediaBaseUrl: string }> = {
@@ -27,12 +27,11 @@ export const environment = {
   appVersion: '__BUILD_VERSION__',
   clientKey: '__CLIENT_KEY__',
   activeProvider: PROD_ACTIVE_PROVIDER,
-  
-  // Uses CI/CD injected URL if present, otherwise defaults to the selected provider
+
   firebaseConfigUrl: '__FIREBASE_CONFIG_URL__'.startsWith('__')
     ? PROD_PROVIDER_CONFIGS[PROD_ACTIVE_PROVIDER].configUrl
     : '__FIREBASE_CONFIG_URL__',
-    
+
   defaultMediaBaseUrl: PROD_PROVIDER_CONFIGS[PROD_ACTIVE_PROVIDER].mediaBaseUrl,
 
   fallbackMockPath: 'assets/mock/',

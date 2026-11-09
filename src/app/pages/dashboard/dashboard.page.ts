@@ -8,16 +8,21 @@ import {
   IonGrid,
   IonRow,
   IonCol,
-  IonIcon
+  IonIcon,
+  IonButton,
+  IonSpinner,
+  ToastController
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
   sparklesOutline,
   bookOutline,
   arrowForwardOutline,
-  searchOutline
+  searchOutline,
+  cloudOfflineOutline,
+  refreshOutline
 } from 'ionicons/icons';
-import { Observable, Subscription, BehaviorSubject, combineLatest } from 'rxjs';
+import { Observable, Subscription, BehaviorSubject, combineLatest, firstValueFrom } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { HeaderComponent } from '../../layout/header.component';
@@ -37,7 +42,9 @@ import { Book } from '../../core/models/app-config.model';
     IonGrid,
     IonRow,
     IonCol,
-    IonIcon
+    IonIcon,
+    IonButton,
+    IonSpinner
   ],
   template: `
     <app-header
@@ -59,7 +66,7 @@ import { Book } from '../../core/models/app-config.model';
         <ion-refresher-content></ion-refresher-content>
       </ion-refresher>
 
-      <!-- Smooth Announcement Cards (Zero-Flicker Inside Content) -->
+      <!-- Active Announcement Cards (Zero-Flicker Inside Content) -->
       <div class="notification-banner-container" *ngIf="(activeBanners$ | async) as banners">
         <div
           class="banner-item-card"
@@ -81,40 +88,65 @@ import { Book } from '../../core/models/app-config.model';
         </div>
       </div>
 
+      <!-- Library Grid -->
       <ion-grid fixed class="books-grid">
         <ion-row *ngIf="filteredBooks$ | async as books">
-          <ion-col
-            size="12"
-            sizeMd="6"
-            sizeLg="4"
-            *ngFor="let book of books; trackBy: trackByBookId">
-            <div
-              class="book-card"
-              [style.--book-watermark]="'url(' + getCoverWatermarkUrl(book) + ')'"
-              (click)="openBookChapters(book.id)">
-              <div class="book-watermark-overlay" aria-hidden="true"></div>
+          <!-- Normal State: Book Cards -->
+          <ng-container *ngIf="books.length > 0">
+            <ion-col
+              size="12"
+              sizeMd="6"
+              sizeLg="4"
+              *ngFor="let book of books; trackBy: trackByBookId">
+              <div
+                class="book-card"
+                [style.--book-watermark]="'url(' + getCoverWatermarkUrl(book) + ')'"
+                (click)="openBookChapters(book.id)">
+                <div class="book-watermark-overlay" aria-hidden="true"></div>
 
-              <div class="book-card-content">
-                <div class="title-row">
-                  <h2 class="book-card-title">{{ localize(book.title) }}</h2>
-                  <ion-icon name="arrow-forward-outline" class="action-arrow"></ion-icon>
-                </div>
+                <div class="book-card-content">
+                  <div class="title-row">
+                    <h2 class="book-card-title">{{ localize(book.title) }}</h2>
+                    <ion-icon name="arrow-forward-outline" class="action-arrow"></ion-icon>
+                  </div>
 
-                <p *ngIf="book.subtitle" class="book-card-subtitle">{{ localize(book.subtitle) }}</p>
+                  <p *ngIf="book.subtitle" class="book-card-subtitle">{{ localize(book.subtitle) }}</p>
 
-                <div class="chapter-count-badge">
-                  <ion-icon name="book-outline"></ion-icon>
-                  <span>{{ book.chapters.length }} Chapters</span>
+                  <div class="chapter-count-badge">
+                    <ion-icon name="book-outline"></ion-icon>
+                    <span>{{ book.chapters.length }} Chapters</span>
+                  </div>
                 </div>
               </div>
+            </ion-col>
+          </ng-container>
+
+          <!-- Empty State A: User Searched and Found No Matches -->
+          <ion-col size="12" *ngIf="books.length === 0 && currentSearchQuery.trim().length > 0" class="no-books-card ion-text-center">
+            <div class="empty-state-box">
+              <ion-icon name="search-outline" class="empty-icon"></ion-icon>
+              <h3 class="empty-title">No books match "{{ currentSearchQuery }}"</h3>
+              <p class="empty-hint">Try searching in Hindi, Gujarati, or English</p>
             </div>
           </ion-col>
 
-          <ion-col size="12" *ngIf="books.length === 0" class="no-books-card ion-text-center">
-            <div class="empty-search-box">
-              <ion-icon name="book-outline" class="empty-book-icon"></ion-icon>
-              <h3 class="empty-search-title">No books match "{{ currentSearchQuery }}"</h3>
-              <p class="empty-search-hint">Try searching in Hindi, Gujarati, or English</p>
+          <!-- Empty State B: Network Outage or Catalog Failed to Load -->
+          <ion-col size="12" *ngIf="books.length === 0 && currentSearchQuery.trim().length === 0" class="no-books-card ion-text-center">
+            <div class="empty-state-box">
+              <ion-icon name="cloud-offline-outline" class="empty-icon warning-icon"></ion-icon>
+              <h3 class="empty-title">Unable to Connect to Library</h3>
+              <p class="empty-hint">Please check your internet connection and tap below to retry.</p>
+              
+              <ion-button
+                fill="outline"
+                color="primary"
+                class="retry-btn ion-margin-top"
+                [disabled]="isRetrying"
+                (click)="onRetrySync()">
+                <ion-spinner name="crescent" *ngIf="isRetrying"></ion-spinner>
+                <ion-icon slot="start" name="refresh-outline" *ngIf="!isRetrying"></ion-icon>
+                {{ isRetrying ? 'Connecting...' : 'Tap to Retry' }}
+              </ion-button>
             </div>
           </ion-col>
         </ion-row>
@@ -124,9 +156,9 @@ import { Book } from '../../core/models/app-config.model';
   styles: [`
     .dashboard-content {
       position: relative;
+      --background: var(--ion-background-color, #fffdf9);
     }
 
-    /* Zero-Flicker Announcement Card Container */
     .notification-banner-container {
       display: flex;
       flex-direction: column;
@@ -334,30 +366,47 @@ import { Book } from '../../core/models/app-config.model';
       font-weight: 700;
     }
 
-    .empty-search-box {
-      padding: 36px 16px;
+    /* Robust Error / Offline / Empty State Card */
+    .empty-state-box {
+      padding: 42px 20px;
       margin: 20px auto;
       max-width: 440px;
+      background: var(--ion-card-background, #fff8ec);
+      border-radius: 20px;
+      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.15);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
     }
 
-    .empty-book-icon {
+    .empty-icon {
       font-size: 3.5rem;
       color: var(--ion-color-medium);
       opacity: 0.6;
       margin-bottom: 12px;
     }
 
-    .empty-search-title {
-      font-size: 1.1rem;
-      font-weight: 700;
-      color: var(--ion-text-color);
-      margin: 0 0 6px 0;
+    .warning-icon {
+      color: var(--ion-color-primary);
+      opacity: 0.85;
     }
 
-    .empty-search-hint {
-      font-size: 0.88rem;
+    .empty-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--ion-text-color);
+      margin: 0 0 8px 0;
+    }
+
+    .empty-hint {
+      font-size: 0.9rem;
       color: var(--ion-color-medium);
-      margin: 0;
+      margin: 0 0 16px 0;
+      line-height: 1.4;
+    }
+
+    .retry-btn {
+      --border-radius: 12px;
+      font-weight: 700;
+      height: 44px;
     }
   `]
 })
@@ -365,6 +414,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   private router = inject(Router);
   public dataService = inject(DataService);
   private storageService = inject(StorageService);
+  private toastCtrl = inject(ToastController);
 
   public visibleBooks$: Observable<Book[]> = this.dataService.visibleBooks$;
   public activeBanners$: Observable<ActiveBannerView[]> = this.dataService.activeBanners$;
@@ -373,6 +423,7 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   private currentLang = 'hi';
   public currentSearchQuery = '';
+  public isRetrying = false;
   private searchSubject = new BehaviorSubject<string>('');
 
   public filteredBooks$: Observable<Book[]> = combineLatest([
@@ -381,6 +432,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   ]).pipe(
     map(([books, query]) => {
       const q = (query || '').trim().toLowerCase();
+      if (!books) return [];
       if (!q) return books;
       return books.filter(book => {
         const titleMatch = Object.values(book.title || {}).some(t => (t || '').toLowerCase().includes(q));
@@ -398,7 +450,9 @@ export class DashboardPage implements OnInit, OnDestroy {
       sparklesOutline,
       bookOutline,
       arrowForwardOutline,
-      searchOutline
+      searchOutline,
+      cloudOfflineOutline,
+      refreshOutline
     });
   }
 
@@ -438,12 +492,37 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   public getCoverWatermarkUrl(book: Book): string {
+    if (!book?.coverImageUrl) return '';
     return this.dataService.resolveMediaUrl(book.coverImageUrl);
   }
 
   public async onPullRefresh(event: CustomEvent): Promise<void> {
-    await this.dataService.syncWithRemote();
+    const result = await this.dataService.syncWithRemote();
     (event.target as HTMLIonRefresherElement).complete();
+
+    const toast = await this.toastCtrl.create({
+      message: result.success ? 'Library updated successfully' : 'Could not reach server. Showing saved library.',
+      duration: 2000,
+      position: 'bottom',
+      color: result.success ? 'success' : 'medium'
+    });
+    await toast.present();
+  }
+
+  public async onRetrySync(): Promise<void> {
+    this.isRetrying = true;
+    const result = await this.dataService.syncWithRemote();
+    this.isRetrying = false;
+
+    if (!result.success) {
+      const toast = await this.toastCtrl.create({
+        message: 'Connection failed. Please check internet connection.',
+        duration: 2200,
+        position: 'bottom',
+        color: 'danger'
+      });
+      await toast.present();
+    }
   }
 
   public localize(mapObj: Record<string, string> | undefined): string {

@@ -9,14 +9,14 @@ import {
   IonCardSubtitle,
   IonCardContent,
   IonButton,
-  IonIcon
+  IonIcon,
+  IonSpinner
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { checkmarkCircle, arrowForwardOutline, globeOutline } from 'ionicons/icons';
 import { Observable } from 'rxjs';
-import { Preferences } from '@capacitor/preferences';
+import { map } from 'rxjs/operators';
 
-import { environment } from '../../../environments/environment';
 import { DataService } from '../../core/services/data.service';
 import { StorageService } from '../../core/services/storage.service';
 import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.model';
@@ -33,34 +33,49 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
     IonCardSubtitle,
     IonCardContent,
     IonButton,
-    IonIcon
+    IonIcon,
+    IonSpinner
   ],
   template: `
     <ion-content class="ion-padding onboarding-bg">
-      <div class="onboarding-wrapper" *ngIf="identity$ | async as identity">
-        <ion-card class="onboarding-card">
+      <div class="onboarding-wrapper">
+        <!-- 1. Loading State while Remote Config Resolves on Slow Connections -->
+        <div class="onboarding-loading-box" *ngIf="isLoadingConfig && !(identity$ | async)">
+          <ion-spinner name="crescent" color="primary" class="loading-spinner"></ion-spinner>
+          <p class="loading-text">Loading preferences...</p>
+        </div>
+
+        <!-- 2. Interactive Language Selection Card -->
+        <ion-card class="onboarding-card" *ngIf="(identity$ | async) || !isLoadingConfig">
           <!-- Logo Display -->
-          <div class="logo-stage" *ngIf="identity.logoUrl">
-            <img [src]="dataService.resolveMediaUrl(identity.logoUrl)" alt="App Logo" class="welcome-logo" />
+          <div class="logo-stage" *ngIf="(identity$ | async)?.logoUrl as logo">
+            <img [src]="dataService.resolveMediaUrl(logo)" alt="App Logo" class="welcome-logo" />
           </div>
 
-          <!-- Welcome Header (Center Aligned) -->
+          <!-- Welcome Header -->
           <ion-card-header class="welcome-header">
             <ion-card-title class="welcome-heading">
-              {{ (uiText$ | async)?.['welcome_title'] || localize(identity.appName) || identity.defaultAppName }}
+              {{
+                (uiText$ | async)?.['welcome_title'] ||
+                localize((identity$ | async)?.appName) ||
+                (identity$ | async)?.defaultAppName ||
+                'Welcome'
+              }}
             </ion-card-title>
             <ion-card-subtitle class="welcome-subtitle">
               <ion-icon name="globe-outline"></ion-icon>
-              <span>{{ (uiText$ | async)?.['select_language_prompt'] || 'Please select your preferred language' }}</span>
+              <span>
+                {{ (uiText$ | async)?.['select_language_prompt'] || 'Please select your preferred language' }}
+              </span>
             </ion-card-subtitle>
           </ion-card-header>
 
           <ion-card-content>
-            <!-- Single-Column Center-Aligned Language List -->
-            <div class="language-column" *ngIf="enabledLanguages$ | async as languages">
+            <!-- Language List: Pulls from remote with instant local fallback -->
+            <div class="language-column">
               <button
                 type="button"
-                *ngFor="let lang of languages"
+                *ngFor="let lang of availableLanguages"
                 class="lang-option-btn"
                 [class.selected]="selectedLang === lang.code"
                 (click)="onSelectLanguage(lang.code)">
@@ -73,7 +88,7 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
               </button>
             </div>
 
-            <!-- Continue Button -->
+            <!-- Submit & Continue Button -->
             <ion-button
               expand="block"
               size="large"
@@ -90,11 +105,30 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
     </ion-content>
   `,
   styles: [`
+    .onboarding-bg {
+      --background: var(--ion-background-color, #fffdf9);
+    }
     .onboarding-wrapper {
       min-height: 100%;
       display: flex;
       align-items: center;
       justify-content: center;
+    }
+    .onboarding-loading-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--ion-color-medium);
+    }
+    .loading-spinner {
+      width: 42px;
+      height: 42px;
+    }
+    .loading-text {
+      font-size: 0.95rem;
+      font-weight: 500;
     }
     .onboarding-card {
       width: 100%;
@@ -102,6 +136,8 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
       border-radius: 20px;
       padding: 16px 12px;
       box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+      background: var(--ion-card-background, #fff8ec);
+      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.15);
       text-align: center;
     }
     .logo-stage {
@@ -137,8 +173,8 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
       margin-top: 8px;
       font-size: 0.95rem;
       text-align: center !important;
+      color: var(--ion-color-medium);
     }
-    /* Single-Column Language Selection */
     .language-column {
       display: flex;
       flex-direction: column;
@@ -157,7 +193,7 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
       padding: 14px 20px;
       border-radius: 12px;
       border: 2px solid rgba(var(--ion-color-primary-rgb), 0.2);
-      background: var(--ion-background-color, #ffffff);
+      background: #ffffff;
       color: var(--ion-text-color, #2c1810);
       font-size: 1.05rem;
       font-weight: 600;
@@ -181,6 +217,7 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
       margin: 16px auto 0;
       --border-radius: 12px;
       font-weight: 700;
+      height: 48px;
     }
   `]
 })
@@ -190,26 +227,37 @@ export class OnboardingPage implements OnInit {
   private storageService = inject(StorageService);
 
   public identity$: Observable<AppIdentity> = this.dataService.identity$;
-  public enabledLanguages$: Observable<SupportedLanguage[]> = this.dataService.enabledLanguages$;
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
 
   public selectedLang = 'hi';
+  public isLoadingConfig = true;
+
+  // Resilient fallback languages if remote manifest is delayed
+  public availableLanguages: SupportedLanguage[] = [
+    { code: 'hi', name: 'हिन्दी', ttsLocale: 'hi-IN', isEnabled: true },
+    { code: 'gu', name: 'ગુજરાતી', ttsLocale: 'gu-IN', isEnabled: true },
+    { code: 'en', name: 'English', ttsLocale: 'en-IN', isEnabled: true }
+  ];
 
   constructor() {
     addIcons({ checkmarkCircle, arrowForwardOutline, globeOutline });
   }
 
-  async ngOnInit(): Promise<void> {
-    // Bypass onboarding if language is already stored in cache
-    const langKey = `wl_${environment.clientKey}_selected_language`;
-    const { value: cachedLang } = await Preferences.get({ key: langKey });
-
-    if (cachedLang || this.storageService.hasCompletedOnboardingSnapshot()) {
-      this.router.navigate(['/dashboard'], { replaceUrl: true });
-      return;
-    }
-
+  ngOnInit(): void {
     this.selectedLang = this.storageService.getCurrentLanguageSnapshot() || 'hi';
+
+    // Hydrate enabled languages dynamically as soon as remote config emits
+    this.dataService.enabledLanguages$.subscribe(langs => {
+      if (langs && langs.length > 0) {
+        this.availableLanguages = langs;
+      }
+      this.isLoadingConfig = false;
+    });
+
+    // Safety timeout: dismiss loading indicator after 2s even if offline
+    setTimeout(() => {
+      this.isLoadingConfig = false;
+    }, 2000);
   }
 
   public onSelectLanguage(code: string): void {

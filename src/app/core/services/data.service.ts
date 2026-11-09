@@ -294,10 +294,13 @@ export class DataService implements OnDestroy {
       }
     } catch {}
 
-    const relativePath = chapter.contentUrl || `mock/chapters/${bookId}/${chapter.id}.json`;
-    const targetUrl = this.resolveMediaUrl(
-      relativePath.startsWith('mock/') ? relativePath : `mock/${relativePath}`
-    );
+    // Strict relative path under src/assets/mock/chapters/ with ZERO string replacements
+    let relativePath = chapter.contentUrl || `mock/chapters/${bookId}/${chapter.id}.json`;
+    if (!relativePath.startsWith('mock/') && !relativePath.startsWith('http://') && !relativePath.startsWith('https://')) {
+      relativePath = `mock/${relativePath}`;
+    }
+
+    const targetUrl = this.resolveMediaUrl(relativePath);
 
     try {
       const res = await firstValueFrom(this.http.get<any>(`${targetUrl}?_cb=${Date.now()}`));
@@ -326,7 +329,7 @@ export class DataService implements OnDestroy {
         return contentPayload;
       }
     } catch (err) {
-      console.warn(`[DataService] Failed loading chapter from: ${targetUrl}`, err);
+      console.warn(`[DataService] Failed loading chapter from strict path: ${targetUrl}`, err);
     }
 
     return { transcript: {}, images: chapter.images || [] };
@@ -337,15 +340,17 @@ export class DataService implements OnDestroy {
     return content.transcript;
   }
 
+  /**
+   * Resolves media path strictly under src/assets without modifying or replacing names
+   */
   public resolveMediaUrl(urlOrPath: string | undefined): string {
     if (!urlOrPath) return '';
-    let clean = urlOrPath.trim();
+    const clean = urlOrPath.trim();
 
     if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('data:')) {
       return clean;
     }
 
-    // Resolves against app_identity.json mediaBaseUrl, or environment active provider default
     const baseUrl =
       this.configSubject.value?.app_identity?.mediaBaseUrl ||
       environment.defaultMediaBaseUrl ||
@@ -353,28 +358,11 @@ export class DataService implements OnDestroy {
 
     if (!baseUrl) return clean;
 
-    let base = baseUrl.replace(/\/+$/, '');
-    if (base.endsWith('/mock')) {
-      base = base.replace(/\/mock$/, '');
-    }
+    const base = baseUrl.replace(/\/+$/, '');
+    const path = clean.replace(/^\/+/, '');
 
-    let sanitizedPath = clean.replace(/^\/+/, '');
-
-    // Auto-fix for images without the 'images/' prefix
-    if (
-      !sanitizedPath.startsWith('images/') &&
-      !sanitizedPath.startsWith('audio/') &&
-      !sanitizedPath.startsWith('mock/')
-    ) {
-      const isImg = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'].some(ext =>
-        sanitizedPath.toLowerCase().endsWith(ext)
-      );
-      if (isImg) {
-        sanitizedPath = `images/${sanitizedPath}`;
-      }
-    }
-
-    return `${base}/${sanitizedPath}`;
+    // Strict direct path mapping: ${base}/${path}
+    return `${base}/${path}`;
   }
 
   public localizeField(mapObj: Record<string, string> | undefined, lang: string): string {
@@ -388,10 +376,8 @@ export class DataService implements OnDestroy {
         const book = books.find((b: Book) => b.id === bookId);
         if (!book) return null;
 
-        const targetClean = chapterId.replace(/_sg_/g, '_');
-        const chapter = book.chapters.find((c: Chapter) =>
-          c.id === chapterId || c.id.replace(/_sg_/g, '_') === targetClean
-        );
+        // Exact match with zero string replacements
+        const chapter = book.chapters.find((c: Chapter) => c.id === chapterId);
         return chapter ? { book, chapter } : null;
       })
     );

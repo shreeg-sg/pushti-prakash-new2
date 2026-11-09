@@ -1,4 +1,4 @@
-import { Injectable, NgZone, OnDestroy } from '@angular/core';
+import { Injectable, NgZone, OnDestroy, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Capacitor, PluginListenerHandle } from '@capacitor/core';
 import {
@@ -8,27 +8,29 @@ import {
 } from '@capacitor/local-notifications';
 
 import { NotificationSchedule } from '../models/app-config.model';
+import { StorageService } from './storage.service';
 
 @Injectable({
   providedIn: 'root'
 })
 export class NotificationService implements OnDestroy {
+  private router = inject(Router);
+  private ngZone = inject(NgZone);
+  private storageService = inject(StorageService);
+
   private actionListener?: PluginListenerHandle;
   private isInitialized = false;
-
-  constructor(
-    private router: Router,
-    private ngZone: NgZone
-  ) {}
 
   public async initialize(): Promise<void> {
     if (this.isInitialized || !Capacitor.isNativePlatform()) return;
     this.isInitialized = true;
 
-    // Listen for notification tap / action
     this.actionListener = await LocalNotifications.addListener(
       'localNotificationActionPerformed',
-      (event: ActionPerformed) => {
+      async (event: ActionPerformed) => {
+        // Guarantee local storage is hydrated before routing so language doesn't reset
+        await this.storageService.isReady();
+
         const extra = event.notification?.extra;
         if (extra?.targetBookId && extra?.targetChapterId) {
           this.ngZone.run(() => {
@@ -72,7 +74,6 @@ export class NotificationService implements OnDestroy {
       const notificationsToSchedule: LocalNotificationSchema[] = [];
 
       for (const item of activeSchedules) {
-        // App logo & brand color branding
         const iconConfig = {
           smallIcon: 'ic_launcher',
           largeIcon: 'ic_launcher',

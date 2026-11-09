@@ -30,22 +30,24 @@ export class AppComponent implements OnInit {
   ) {}
 
   async ngOnInit(): Promise<void> {
-    // 1. Register notification tap listener immediately on app boot
-    await this.notificationService.initialize();
-
-    // 2. Hydrate local user preferences (language, font size, bookmarks)
+    // 1. Hydrate local preferences in 0ms (synchronous from memory/storage)
     await this.storageService.initialize();
 
-    // 3. Load config and sync daily
-    await this.dataService.initialize();
-
-    // 4. Initialize hardware back-button listener
+    // 2. Register native listeners
     this.backButtonService.initialize();
+    await this.notificationService.initialize();
 
-    // 5. Route to Onboarding if first launch
+    // 3. Mount router-outlet immediately so cold boot has 0ms visual latency
     this.isAppReady = true;
+
+    // 4. Check onboarding status from disk cache
     if (!this.storageService.hasCompletedOnboardingSnapshot()) {
       await this.router.navigate(['/onboarding'], { replaceUrl: true });
     }
+
+    // 5. Asynchronously trigger daily remote sync without blocking UI startup
+    this.dataService.initialize().catch(err => {
+      console.warn('[AppComponent] Background remote sync deferred:', err);
+    });
   }
 }

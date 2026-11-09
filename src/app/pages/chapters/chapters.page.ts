@@ -15,7 +15,9 @@ import {
   playCircleOutline,
   documentTextOutline,
   arrowBackOutline,
-  searchOutline
+  searchOutline,
+  micOutline,
+  volumeHighOutline
 } from 'ionicons/icons';
 import { Observable, Subscription, combineLatest } from 'rxjs';
 
@@ -41,7 +43,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     <app-header [pageTitle]="activeBookTitle"></app-header>
 
     <ion-content class="ion-padding chapters-content">
-      <!-- Full-Page Centered Watermark (Always visible behind chapters list) -->
       <div
         class="watermark-overlay"
         *ngIf="watermarkUrl$ | async as wmUrl"
@@ -50,7 +51,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       </div>
 
       <div class="chapters-wrapper" *ngIf="activeBook">
-        <!-- Title & Description Header Section (Max 20% Viewport Height + 2-Line Subtitle) -->
+        <!-- Title & Subtitle Card -->
         <div
           class="book-banner-card"
           [style.--cover-watermark]="'url(' + getCoverWatermarkUrl(activeBook) + ')'">
@@ -67,7 +68,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
           </div>
         </div>
 
-        <!-- In-Page Chapter Search Bar -->
+        <!-- Search Bar -->
         <div class="chapter-searchbar-container">
           <ion-searchbar
             [placeholder]="getChapterSearchPlaceholder()"
@@ -82,6 +83,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
           {{ getChaptersSectionTitle() }} ({{ filteredChapters.length }})
         </div>
 
+        <!-- Chapter Items List -->
         <ion-list lines="inset" class="chapters-list">
           <ion-item
             *ngFor="let chapter of filteredChapters; trackBy: trackByChapterId"
@@ -95,20 +97,22 @@ import { Book, Chapter } from '../../core/models/app-config.model';
 
             <ion-label class="ion-text-wrap chapter-title-label">
               <h2 class="chapter-primary-title">{{ localize(chapter.title) }}</h2>
-              <p *ngIf="hasRecordedAudio(chapter)" class="audio-available-hint">
-                {{ (uiText$ | async)?.['audio_available'] || 'Audio available' }}
+              <!-- Audio Status Indicator: Clear distinction between Studio MP3 & Native TTS -->
+              <p class="audio-available-hint">
+                <ion-icon [name]="hasRecordedAudio(chapter) ? 'volume-high-outline' : 'mic-outline'" class="audio-status-icon"></ion-icon>
+                <span>{{ getAudioBadgeLabel(chapter) }}</span>
               </p>
             </ion-label>
 
             <ion-icon
               slot="end"
-              [name]="hasRecordedAudio(chapter) ? 'play-circle-outline' : 'document-text-outline'"
+              [name]="hasRecordedAudio(chapter) ? 'play-circle-outline' : 'mic-outline'"
               color="primary"
               class="media-icon">
             </ion-icon>
           </ion-item>
 
-          <!-- No Chapters Found Empty State -->
+          <!-- Empty State -->
           <div *ngIf="filteredChapters.length === 0" class="no-chapters-hint">
             <ion-icon name="document-text-outline" class="empty-chapter-icon"></ion-icon>
             <p class="empty-chapter-title">No chapters match "{{ chapterSearchQuery }}"</p>
@@ -124,7 +128,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       position: relative;
     }
 
-    /* Full-Page Centered Watermark */
     .watermark-overlay {
       position: fixed;
       top: 50%;
@@ -147,7 +150,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       z-index: 1;
     }
 
-    /* 20% Viewport Height Max */
     .book-banner-card {
       position: relative;
       border-radius: 18px;
@@ -156,8 +158,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
       background: var(--ion-card-background, #fff8ec);
       border: 1px solid rgba(var(--ion-color-primary-rgb), 0.18);
-      height: 20vh;
-      max-height: 20vh;
       min-height: 130px;
       display: flex;
       align-items: center;
@@ -173,7 +173,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       background-repeat: no-repeat;
       background-position: center;
       background-size: cover;
-      opacity: 0.15;
+      opacity: 0.18;
       pointer-events: none;
       z-index: 0;
     }
@@ -182,7 +182,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       position: relative;
       z-index: 1;
       width: 100%;
-      padding: 12px 18px;
+      padding: 14px 18px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -194,26 +194,15 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       font-size: 1.25rem;
       font-weight: 800;
       color: var(--ion-color-primary);
-      margin: 0 0 2px 0;
-      line-height: 1.2;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      margin: 0 0 4px 0;
+      line-height: 1.3;
     }
 
-    /* 2-line clamped description with natural line wrapping */
     .book-subtitle {
-      font-size: 0.86rem;
+      font-size: 0.88rem;
       color: var(--ion-color-medium);
       line-height: 1.35;
-      margin: 2px 0 6px 0;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: normal;
-      word-break: break-word;
+      margin: 2px 0 8px 0;
     }
 
     .chapter-count-chip {
@@ -225,11 +214,10 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       color: var(--ion-color-primary);
       padding: 4px 12px;
       border-radius: 16px;
-      font-size: 0.78rem;
+      font-size: 0.8rem;
       font-weight: 700;
     }
 
-    /* Chapter In-Page Search Bar Styling */
     .chapter-searchbar-container {
       margin-bottom: 10px;
     }
@@ -251,7 +239,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       text-transform: uppercase;
       letter-spacing: 0.8px;
       color: var(--ion-color-medium);
-      margin: 12px 4px 8px;
+      margin: 14px 4px 8px;
     }
 
     .chapters-list {
@@ -260,7 +248,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     }
 
     .chapter-row-item {
-      --background: rgba(255, 248, 236, 0.92);
+      --background: rgba(255, 248, 236, 0.94);
       --border-radius: 14px;
       margin-bottom: 8px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
@@ -275,8 +263,8 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     }
 
     .chapter-index-circle {
-      width: 32px;
-      height: 32px;
+      width: 34px;
+      height: 34px;
       border-radius: 50%;
       background: rgba(var(--ion-color-primary-rgb), 0.12);
       color: var(--ion-color-primary);
@@ -284,22 +272,31 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       align-items: center;
       justify-content: center;
       font-weight: 700;
-      font-size: 0.88rem;
+      font-size: 0.9rem;
       margin-right: 12px;
       flex-shrink: 0;
     }
 
     .chapter-primary-title {
-      font-size: 1.02rem;
+      font-size: 1.05rem;
       font-weight: 700;
       color: var(--ion-text-color);
       margin: 2px 0;
     }
 
     .audio-available-hint {
-      font-size: 0.75rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.78rem;
+      font-weight: 600;
       color: var(--ion-color-medium);
-      margin: 0;
+      margin: 2px 0 0 0;
+    }
+
+    .audio-status-icon {
+      font-size: 0.92rem;
+      color: var(--ion-color-primary);
     }
 
     .media-icon {
@@ -352,7 +349,9 @@ export class ChaptersPage implements OnInit, OnDestroy {
       playCircleOutline,
       documentTextOutline,
       arrowBackOutline,
-      searchOutline
+      searchOutline,
+      micOutline,
+      volumeHighOutline
     });
   }
 
@@ -364,7 +363,7 @@ export class ChaptersPage implements OnInit, OnDestroy {
     ]).subscribe(([params, books, lang]) => {
       this.currentLang = lang;
       const bookId = params.get('bookId');
-      if (!bookId) return;
+      if (!bookId || !books) return;
 
       this.activeBook = books.find((b: Book) => b.id === bookId);
       if (this.activeBook) {
@@ -410,7 +409,7 @@ export class ChaptersPage implements OnInit, OnDestroy {
   }
 
   public getCoverWatermarkUrl(book: Book | undefined): string {
-    return book ? this.dataService.resolveMediaUrl(book.coverImageUrl) : '';
+    return book?.coverImageUrl ? this.dataService.resolveMediaUrl(book.coverImageUrl) : '';
   }
 
   public localize(mapObj: Record<string, string> | undefined): string {
@@ -422,11 +421,36 @@ export class ChaptersPage implements OnInit, OnDestroy {
     return !!raw && raw.trim().length > 0;
   }
 
+  public getAudioBadgeLabel(chapter: Chapter): string {
+    if (this.hasRecordedAudio(chapter)) {
+      return this.currentLang === 'gu'
+        ? 'ઓડિયો ઉપલબ્ધ'
+        : this.currentLang === 'mr'
+        ? 'ऑडिओ उपलब्ध'
+        : this.currentLang === 'en'
+        ? 'Recorded Audio'
+        : 'ऑडियो उपलब्ध';
+    }
+    return this.currentLang === 'gu'
+      ? 'સાંભળો (TTS)'
+      : this.currentLang === 'mr'
+      ? 'ऐका (TTS)'
+      : this.currentLang === 'en'
+      ? 'Listen via TTS'
+      : 'बोलकर सुनें (TTS)';
+  }
+
   public getChaptersCountLabel(count: number): string {
+    if (this.currentLang === 'gu') return `${count} પ્રકરણો`;
+    if (this.currentLang === 'mr') return `${count} धडे`;
+    if (this.currentLang === 'hi') return `${count} अध्याय`;
     return `${count} Chapters`;
   }
 
   public getChaptersSectionTitle(): string {
+    if (this.currentLang === 'gu') return 'પ્રકરણ અનુક્રમણિકા';
+    if (this.currentLang === 'mr') return 'अनुक्रमणिका';
+    if (this.currentLang === 'hi') return 'अध्याय सूची';
     return 'Chapters Index';
   }
 
