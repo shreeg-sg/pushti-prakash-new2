@@ -61,7 +61,6 @@ export class DataService implements OnDestroy {
     map((cfg: AppConfig) => cfg.app_identity)
   );
 
-  // Emits ALL active & eligible banners for today
   public readonly activeBanners$: Observable<ActiveBannerView[]> = combineLatest([
     this.config$,
     this.storageService.selectedLanguage$
@@ -72,7 +71,6 @@ export class DataService implements OnDestroy {
     })
   );
 
-  // Backward-compatible single banner observable
   public readonly updateBanner$: Observable<string | null> = this.activeBanners$.pipe(
     map(banners => (banners.length > 0 ? banners[0].messageHtml : null))
   );
@@ -92,13 +90,11 @@ export class DataService implements OnDestroy {
       for (const item of bannerData) {
         if (!item || item.isEnabled === false) continue;
 
-        // 1. Specific single-date match
         if (item.date && item.date === today) {
           rawEligibleItems.push(item);
           continue;
         }
 
-        // 2. Active date range match
         if (item.startDate || item.endDate) {
           const start = item.startDate;
           const end = item.endDate;
@@ -110,7 +106,6 @@ export class DataService implements OnDestroy {
           }
         }
 
-        // 3. Persistent default messages
         if (item.isDefault || item.date === 'default') {
           rawEligibleItems.push(item);
         }
@@ -261,6 +256,8 @@ export class DataService implements OnDestroy {
       const isUpdated = this.hasConfigChanged(this.configSubject.value, constructedConfig);
 
       if (isUpdated || !this.configSubject.value) {
+        // Clear memory cache so newly updated images on remote show immediately
+        this.chapterContentCache.clear();
         await this.saveCachedConfig(constructedConfig);
         this.applyAndPublishConfig(constructedConfig);
         return { success: true, message: 'Updated from remote', isUpdated: true };
@@ -276,20 +273,24 @@ export class DataService implements OnDestroy {
   public async loadChapterContent(bookId: string, chapter: Chapter): Promise<ChapterLoadedContent> {
     const cacheKey = `${this.CHAPTER_CACHE_PREFIX}${bookId}_${chapter.id}`;
 
+    // 1. Check in-memory cache
     if (this.chapterContentCache.has(cacheKey)) {
-      return this.chapterContentCache.get(cacheKey)!;
+      const cached = this.chapterContentCache.get(cacheKey)!;
+      if (cached.images.length > 0) {
+        return cached;
+      }
     }
 
-    // Check disk storage
+    // 2. Check disk storage
     try {
       const { value } = await Preferences.get({ key: cacheKey });
       if (value) {
         const parsed = JSON.parse(value);
         if (parsed) {
           const transcript = parsed.transcript || (parsed.hi || parsed.gu || parsed.en ? parsed : {});
-          const images = Array.isArray(parsed.images) ? parsed.images : (chapter.images || []);
-          if (Object.keys(transcript).length > 0) {
-            const result: ChapterLoadedContent = { transcript, images };
+          // If disk cache already has images, return immediately
+          if (Array.isArray(parsed.images) && parsed.images.length > 0) {
+            const result: ChapterLoadedContent = { transcript, images: parsed.images };
             this.chapterContentCache.set(cacheKey, result);
             return result;
           }
@@ -297,6 +298,7 @@ export class DataService implements OnDestroy {
       }
     } catch {}
 
+    // 3. Fetch fresh from remote repository to capture newly added images
     const relativePath = chapter.contentUrl || `mock/chapters/${bookId}/${chapter.id}.json`;
     const targetUrl = this.resolveMediaUrl(
       relativePath.startsWith('mock/') ? relativePath : `mock/${relativePath}`
@@ -306,7 +308,7 @@ export class DataService implements OnDestroy {
       const res = await firstValueFrom(this.http.get<any>(`${targetUrl}?_cb=${Date.now()}`));
       const transcriptMap = res?.transcript || (res && (res.hi || res.gu || res.en) ? res : {});
 
-      // Parse images from chapter JSON, falling back to books.json chapter metadata
+      // Parse images from chapter JSON or books.json
       let imagesList: string[] = [];
       if (res?.images && Array.isArray(res.images)) {
         imagesList = res.images;
@@ -336,7 +338,6 @@ export class DataService implements OnDestroy {
     return { transcript: {}, images: chapter.images || [] };
   }
 
-  // Compatibility helper
   public async loadChapterTranscript(bookId: string, chapter: Chapter): Promise<Record<string, string>> {
     const content = await this.loadChapterContent(bookId, chapter);
     return content.transcript;
@@ -358,7 +359,22 @@ export class DataService implements OnDestroy {
       base = base.replace(/\/mock$/, '');
     }
 
-    const sanitizedPath = clean.replace(/^\/+/, '');
+    let sanitizedPath = clean.replace(/^\/+/, '');
+
+    // Auto-fix: if an image filename is provided without 'images/' prefix, automatically prepend 'images/'
+    if (
+      !sanitizedPath.startsWith('images/') &&
+      !sanitizedPath.startsWith('audio/') &&
+      !sanitizedPath.startsWith('mock/')
+    ) {
+      const isImg = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'].some(ext =>
+        sanitizedPath.toLowerCase().endsWith(ext)
+      );
+      if (isImg) {
+        sanitizedPath = `images/${sanitizedPath}`;
+      }
+    }
+
     return `${base}/${sanitizedPath}`;
   }
 

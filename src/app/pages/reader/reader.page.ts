@@ -64,10 +64,11 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     </app-header>
 
     <ion-content class="ion-padding reader-transcript-container">
+      <!-- Watermark strictly placed in background layer without slot="fixed" -->
       <div
-        slot="fixed"
         class="watermark-overlay"
-        [style.backgroundImage]="'url(' + ((watermarkUrl$ | async) || '') + ')'"
+        *ngIf="watermarkUrl$ | async as wmUrl"
+        [style.backgroundImage]="'url(' + wmUrl + ')'"
         aria-hidden="true">
       </div>
 
@@ -75,7 +76,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
         <div class="book-breadcrumb">{{ localize(activeBook.title) }}</div>
         <h1 class="chapter-heading">{{ localize(activeChapter.title) }}</h1>
 
-        <!-- Center-Aligned Chapter Header Images (1 After Another) -->
+        <!-- 100% Solid Opaque 3:4 Chapter Header Images -->
         <div class="chapter-images-list" *ngIf="chapterImages.length > 0 && !isLoadingTranscript">
           <div class="chapter-image-wrapper" *ngFor="let imgUrl of chapterImages">
             <img
@@ -210,8 +211,9 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       position: relative;
     }
 
+    /* Fixed Watermark strictly pinned in background layer */
     .watermark-overlay {
-      position: absolute;
+      position: fixed;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
@@ -220,17 +222,18 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       background-repeat: no-repeat;
       background-position: center;
       background-size: contain;
-      opacity: 0.15;
+      opacity: 0.12;
       pointer-events: none;
       z-index: 0;
     }
 
+    /* Reader Body sits above the watermark layer */
     .reader-body {
       max-width: 780px;
       margin: 0 auto;
       padding-bottom: 230px;
       position: relative;
-      z-index: 1;
+      z-index: 2;
     }
 
     .book-breadcrumb {
@@ -252,33 +255,41 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       padding-bottom: 10px;
     }
 
-    /* Center-Aligned Chapter Header Images */
+    /* Center-Aligned Chapter Header Images Container */
     .chapter-images-list {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 16px;
-      margin: 10px auto 22px;
+      margin: 12px auto 24px;
       width: 100%;
+      position: relative;
+      z-index: 5;
     }
 
     .chapter-image-wrapper {
       width: 100%;
       display: flex;
       justify-content: center;
+      position: relative;
+      z-index: 6;
     }
 
+    /* 100% Solid, Opaque Hard Image (Zero Watermark Bleed) */
     .chapter-featured-img {
-      max-width: 100%;
-      max-height: 380px;
-      width: auto;
-      height: auto;
+      width: 100%;
+      max-width: 440px;
+      aspect-ratio: 4 / 3; /* 3:4 Height to Width ratio */
       object-fit: contain;
-      border-radius: 14px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.12);
-      background: var(--ion-card-background, #fff8ec);
+      border-radius: 16px;
+      box-shadow: 0 6px 22px rgba(0, 0, 0, 0.12);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      background-color: #ffffff !important; /* Pure solid white base blocks background completely */
+      opacity: 1 !important; /* Hard, vivid, 100% solid opacity */
+      display: block;
+      position: relative;
+      z-index: 7;
     }
 
     .transcript-loading,
@@ -519,8 +530,14 @@ export class ReaderPage implements OnInit, OnDestroy {
     const content = await this.dataService.loadChapterContent(book.id, chapter);
     this.isLoadingTranscript = false;
 
-    // Resolve images
-    this.chapterImages = (content.images || []).map(img => this.dataService.resolveMediaUrl(img));
+    let rawImages: string[] = [];
+    if (content.images && content.images.length > 0) {
+      rawImages = content.images;
+    } else if (chapter.images && chapter.images.length > 0) {
+      rawImages = chapter.images;
+    }
+
+    this.chapterImages = rawImages.map(img => this.dataService.resolveMediaUrl(img));
 
     const rawTranscript = this.dataService.localizeField(content.transcript, lang);
     this.transcriptParagraphs = rawTranscript
@@ -555,7 +572,6 @@ export class ReaderPage implements OnInit, OnDestroy {
 
   public onImageLoadError(failedUrl: string): void {
     console.warn('[ReaderPage] Could not load image from:', failedUrl);
-    this.chapterImages = this.chapterImages.filter(url => url !== failedUrl);
   }
 
   public async retryLoadTranscript(): Promise<void> {
