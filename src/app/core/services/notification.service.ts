@@ -21,30 +21,35 @@ export class NotificationService implements OnDestroy {
   private actionListener?: PluginListenerHandle;
   private isInitialized = false;
 
-  public async initialize(): Promise<void> {
-    if (this.isInitialized || !Capacitor.isNativePlatform()) return;
-    this.isInitialized = true;
+  private initPromise?: Promise<void>;
 
-    this.actionListener = await LocalNotifications.addListener(
-      'localNotificationActionPerformed',
-      async (event: ActionPerformed) => {
-        // Guarantee local storage is hydrated before routing so language doesn't reset
-        await this.storageService.isReady();
+  public initialize(): Promise<void> {
+    if (!Capacitor.isNativePlatform()) return Promise.resolve();
+    if (!this.initPromise) {
+      this.initPromise = (async () => {
+        this.actionListener = await LocalNotifications.addListener(
+          'localNotificationActionPerformed',
+          async (event: ActionPerformed) => {
+            await this.storageService.isReady();
 
-        const extra = event.notification?.extra;
-        if (extra?.targetBookId && extra?.targetChapterId) {
-          this.ngZone.run(() => {
-            this.router.navigate(['/reader', extra.targetBookId, extra.targetChapterId], {
-              replaceUrl: false
-            });
-          });
-        } else {
-          this.ngZone.run(() => {
-            this.router.navigate(['/dashboard']);
-          });
-        }
-      }
-    );
+            const extra = event.notification?.extra;
+            if (extra?.targetBookId && extra?.targetChapterId) {
+              this.ngZone.run(() => {
+                this.router.navigate(['/reader', extra.targetBookId, extra.targetChapterId], {
+                  replaceUrl: false
+                });
+              });
+            } else {
+              this.ngZone.run(() => {
+                this.router.navigate(['/dashboard']);
+              });
+            }
+          }
+        );
+        this.isInitialized = true;
+      })();
+    }
+    return this.initPromise;
   }
 
   public async rescheduleNotifications(

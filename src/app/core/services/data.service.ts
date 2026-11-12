@@ -1,7 +1,7 @@
 import { Injectable, NgZone, OnDestroy, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable, combineLatest, firstValueFrom, of } from 'rxjs';
-import { map, filter, catchError } from 'rxjs/operators';
+import { BehaviorSubject, Observable, Subscription, combineLatest, firstValueFrom, of } from 'rxjs';
+import { map, filter, catchError, distinctUntilChanged } from 'rxjs/operators';
 import { App, AppState } from '@capacitor/app';
 import { Preferences } from '@capacitor/preferences';
 import { PluginListenerHandle } from '@capacitor/core';
@@ -20,6 +20,7 @@ import {
 import { ThemeService } from './theme.service';
 import { StorageService } from './storage.service';
 import { NotificationService } from './notification.service';
+import { SecurityUtil } from '../utils/security.util';
 
 export interface ActiveBannerView {
   id: string;
@@ -56,6 +57,7 @@ export class DataService implements OnDestroy {
 
   private chapterContentCache = new Map<string, ChapterLoadedContent>();
   private appStateListener?: PluginListenerHandle;
+  private langNotifySub?: Subscription;
 
   public readonly identity$: Observable<AppIdentity> = this.config$.pipe(
     map((cfg: AppConfig) => cfg.app_identity)
@@ -78,11 +80,7 @@ export class DataService implements OnDestroy {
   public resolveAllEligibleBanners(bannerData: any, lang: string): ActiveBannerView[] {
     if (!bannerData) return [];
 
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const today = `${year}-${month}-${day}`;
+    const today = this.getLocalDateString();
 
     const rawEligibleItems: any[] = [];
 
@@ -124,15 +122,16 @@ export class DataService implements OnDestroy {
     let counter = 1;
 
     for (const item of rawEligibleItems) {
-      const msg = item.message ? this.localizeField(item.message, lang) : this.localizeField(item, lang);
+      const rawMsg = item.message ? this.localizeField(item.message, lang) : this.localizeField(item, lang);
+      const safeMsgHtml = SecurityUtil.sanitizeSafeHtml(rawMsg);
 
-      if (msg && msg.trim().length > 0) {
+      if (safeMsgHtml && safeMsgHtml.trim().length > 0) {
         results.push({
           id: item.id ? String(item.id) : `banner_${counter++}`,
-          messageHtml: msg,
+          messageHtml: safeMsgHtml,
           isNew: item.isNew === true,
-          targetBookId: item.targetBookId,
-          targetChapterId: item.targetChapterId,
+          targetBookId: typeof item.targetBookId === 'string' ? item.targetBookId.trim() : undefined,
+          targetChapterId: typeof item.targetChapterId === 'string' ? item.targetChapterId.trim() : undefined,
           actionLabel: item.actionLabel ? this.localizeField(item.actionLabel, lang) : undefined
         });
       }
@@ -186,6 +185,16 @@ export class DataService implements OnDestroy {
       this.applyAndPublishConfig(cachedConfig);
     }
 
+    // Issue #22: Re-schedule notifications whenever user changes language
+    this.langNotifySub = this.storageService.selectedLanguage$
+      .pipe(distinctUntilChanged())
+      .subscribe(lang => {
+        const schedules = this.configSubject.value?.notification_schedules;
+        if (schedules) {
+          this.notificationService.rescheduleNotifications(schedules, lang).catch(() => {});
+        }
+      });
+
     await this.syncIfDueToday();
 
     this.appStateListener = await App.addListener('appStateChange', async (state: AppState) => {
@@ -198,7 +207,7 @@ export class DataService implements OnDestroy {
   }
 
   public async syncIfDueToday(force = false): Promise<{ success: boolean; message: string; isUpdated: boolean }> {
-    const today = new Date().toISOString().split('T')[0];
+    const today = this.getLocalDateString();
     const { value: lastSyncDate } = await Preferences.get({ key: this.LAST_DAILY_SYNC_KEY });
     const { value: cachedData } = await Preferences.get({ key: this.CACHE_KEY });
 
@@ -206,18 +215,18 @@ export class DataService implements OnDestroy {
       return { success: true, message: 'Already updated today', isUpdated: false };
     }
 
-    const result = await this.syncWithRemote();
+    const result = await this.syncWithRemote(force);
     if (result.success) {
       await Preferences.set({ key: this.LAST_DAILY_SYNC_KEY, value: today });
     }
     return result;
   }
 
-  public async syncWithRemote(): Promise<{ success: boolean; message: string; isUpdated: boolean }> {
+  public async syncWithRemote(forceRefresh = false): Promise<{ success: boolean; message: string; isUpdated: boolean }> {
     try {
       const endpoint = environment.firebaseConfigUrl;
-      if (!endpoint || endpoint.startsWith('__')) {
-        return { success: false, message: 'Remote URL not configured', isUpdated: false };
+      if (!endpoint || endpoint.startsWith('__') || !endpoint.startsWith('https://')) {
+        return { success: false, message: 'Secure remote URL not configured', isUpdated: false };
       }
 
       let baseDir = endpoint.trim();
@@ -225,10 +234,11 @@ export class DataService implements OnDestroy {
         baseDir = `${baseDir}/`;
       }
 
-      const cb = `_cb=${Date.now()}`;
+      const dailyKey = this.getLocalDateString();
+      const cb = forceRefresh ? `_cb=${Date.now()}` : `_v=${dailyKey}`;
 
       const [identity, languages, ui, books, banner, about, schedules] = await Promise.all([
-        firstValueFrom(this.http.get<AppIdentity>(`${baseDir}app_identity.json?${cb}`).pipe(catchError(() => of({} as AppIdentity)))),
+        firstValueFrom(this.http.get<AppIdentity>(`${baseDir}app_identity.json?${cb}`).pipe(catchError(() => of(null)))),
         firstValueFrom(this.http.get<SupportedLanguage[]>(`${baseDir}supportedLanguages.json?${cb}`).pipe(catchError(() => of([])))),
         firstValueFrom(this.http.get<UiTranslations>(`${baseDir}ui_translations.json?${cb}`).pipe(catchError(() => of({})))),
         firstValueFrom(this.http.get<Book[]>(`${baseDir}books.json?${cb}`).pipe(catchError(() => of([])))),
@@ -237,20 +247,20 @@ export class DataService implements OnDestroy {
         firstValueFrom(this.http.get<NotificationSchedule[]>(`${baseDir}notification_schedules.json?${cb}`).pipe(catchError(() => of([]))))
       ]);
 
-      if (!identity || !books || books.length === 0) {
-        return { success: false, message: 'Empty remote manifest', isUpdated: false };
+      if (!identity || typeof identity !== 'object' || !Array.isArray(books) || books.length === 0) {
+        return { success: false, message: 'Invalid or empty remote manifest', isUpdated: false };
       }
 
       const constructedConfig: AppConfig = {
         schemaVersion: 1,
         lastUpdatedIso: new Date().toISOString(),
         app_identity: identity,
-        supportedLanguages: languages,
-        ui_translations: ui,
+        supportedLanguages: Array.isArray(languages) ? languages : [],
+        ui_translations: ui && typeof ui === 'object' && !Array.isArray(ui) ? (ui as UiTranslations) : {},
         books: books,
         updateBannerMessage: banner,
         about_info: about,
-        notification_schedules: schedules
+        notification_schedules: Array.isArray(schedules) ? schedules : []
       };
 
       const isUpdated = this.hasConfigChanged(this.configSubject.value, constructedConfig);
@@ -272,9 +282,10 @@ export class DataService implements OnDestroy {
   public async loadChapterContent(bookId: string, chapter: Chapter): Promise<ChapterLoadedContent> {
     const cacheKey = `${this.CHAPTER_CACHE_PREFIX}${bookId}_${chapter.id}`;
 
+    // Issue #14: Return cached chapter even if images array is empty
     if (this.chapterContentCache.has(cacheKey)) {
       const cached = this.chapterContentCache.get(cacheKey)!;
-      if (cached.images.length > 0) {
+      if (Object.keys(cached.transcript).length > 0) {
         return cached;
       }
     }
@@ -285,8 +296,9 @@ export class DataService implements OnDestroy {
         const parsed = JSON.parse(value);
         if (parsed) {
           const transcript = parsed.transcript || (parsed.hi || parsed.gu || parsed.en ? parsed : {});
-          if (Array.isArray(parsed.images) && parsed.images.length > 0) {
-            const result: ChapterLoadedContent = { transcript, images: parsed.images };
+          if (Object.keys(transcript).length > 0) {
+            const images = Array.isArray(parsed.images) ? parsed.images : (chapter.images || []);
+            const result: ChapterLoadedContent = { transcript, images };
             this.chapterContentCache.set(cacheKey, result);
             return result;
           }
@@ -294,16 +306,20 @@ export class DataService implements OnDestroy {
       }
     } catch {}
 
-    // Strict relative path under src/assets/mock/chapters/ with ZERO string replacements
     let relativePath = chapter.contentUrl || `mock/chapters/${bookId}/${chapter.id}.json`;
     if (!relativePath.startsWith('mock/') && !relativePath.startsWith('http://') && !relativePath.startsWith('https://')) {
       relativePath = `mock/${relativePath}`;
     }
 
     const targetUrl = this.resolveMediaUrl(relativePath);
+    if (!targetUrl) {
+      return { transcript: {}, images: chapter.images || [] };
+    }
+
+    const dailyKey = this.getLocalDateString();
 
     try {
-      const res = await firstValueFrom(this.http.get<any>(`${targetUrl}?_cb=${Date.now()}`));
+      const res = await firstValueFrom(this.http.get<any>(`${targetUrl}?_v=${dailyKey}`));
       const transcriptMap = res?.transcript || (res && (res.hi || res.gu || res.en) ? res : {});
 
       let imagesList: string[] = [];
@@ -340,15 +356,20 @@ export class DataService implements OnDestroy {
     return content.transcript;
   }
 
-  /**
-   * Resolves media path strictly under src/assets without modifying or replacing names
-   */
   public resolveMediaUrl(urlOrPath: string | undefined): string {
     if (!urlOrPath) return '';
     const clean = urlOrPath.trim();
 
-    if (clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('data:')) {
+    if (clean.includes('..') || /^(javascript|vbscript|file):/i.test(clean)) {
+      return '';
+    }
+
+    if (clean.startsWith('https://') || clean.startsWith('data:image/')) {
       return clean;
+    }
+
+    if (clean.startsWith('http://')) {
+      return clean.replace(/^http:\/\//i, 'https://');
     }
 
     const baseUrl =
@@ -358,10 +379,9 @@ export class DataService implements OnDestroy {
 
     if (!baseUrl) return clean;
 
-    const base = baseUrl.replace(/\/+$/, '');
+    const base = baseUrl.replace(/\/+$/, '').replace(/^http:\/\//i, 'https://');
     const path = clean.replace(/^\/+/, '');
 
-    // Strict direct path mapping: ${base}/${path}
     return `${base}/${path}`;
   }
 
@@ -376,7 +396,6 @@ export class DataService implements OnDestroy {
         const book = books.find((b: Book) => b.id === bookId);
         if (!book) return null;
 
-        // Exact match with zero string replacements
         const chapter = book.chapters.find((c: Chapter) => c.id === chapterId);
         return chapter ? { book, chapter } : null;
       })
@@ -417,7 +436,15 @@ export class DataService implements OnDestroy {
     return JSON.stringify(oldCfg) !== JSON.stringify(newCfg);
   }
 
+  private getLocalDateString(dateObj: Date = new Date()): string {
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
   ngOnDestroy(): void {
     this.appStateListener?.remove();
+    this.langNotifySub?.unsubscribe();
   }
 }

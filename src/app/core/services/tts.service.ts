@@ -40,6 +40,7 @@ export class TtsService implements OnDestroy {
   private activeMetadata?: ChapterMediaMetadata;
   private currentPlayableUrl = '';
   private wakeLockSentinel: any = null;
+  private missingAudioUrls = new Set<string>();
 
   private stateSubject = new BehaviorSubject<PlayerState>({
     mode: 'idle',
@@ -127,6 +128,22 @@ export class TtsService implements OnDestroy {
     remoteUrl: string,
     autoPlay: boolean
   ): Promise<void> {
+    if (this.missingAudioUrls.has(remoteUrl)) {
+      this.patchState({
+        mode: 'tts',
+        isPlaying: false,
+        isLoading: false,
+        currentTime: 0,
+        duration: this.ttsChunks.length,
+        activeChunkIndex: 0,
+        activeChunkText: this.ttsChunks[0] || ''
+      });
+      if (autoPlay) {
+        await this.playTtsFromCurrentChunk();
+      }
+      return;
+    }
+
     this.patchState({
       mode: 'audio',
       isLoading: true,
@@ -137,6 +154,22 @@ export class TtsService implements OnDestroy {
     });
 
     const playableUrl = await this.resolveOfflineOrRemoteAudioUrl(chapterId, langCode, remoteUrl);
+
+    // Verify remote URL exists before attaching to HTMLAudioElement to prevent 404 hangs
+    if (playableUrl.startsWith('https://')) {
+      try {
+        const probe = await fetch(playableUrl, { method: 'HEAD' });
+        if (!probe.ok) {
+          this.missingAudioUrls.add(remoteUrl);
+          this.patchState({ isPlaying: autoPlay });
+          this.switchToTtsFallback();
+          return;
+        }
+      } catch {
+        // Offline or network error: let HTMLAudioElement try local cache or trigger error fallback
+      }
+    }
+
     this.currentPlayableUrl = playableUrl;
 
     this.audioElement.src = playableUrl;
@@ -360,12 +393,28 @@ export class TtsService implements OnDestroy {
         window.speechSynthesis.cancel();
         window.speechSynthesis.resume();
 
+        let settled = false;
+        const finish = () => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(watchdog);
+            resolve();
+          }
+        };
+
+        // Issue #19: Prevent infinite hang if mobile browser drops speechSynthesis.onend
+        const estimatedMs = Math.max(12000, Math.ceil((text.length * 160) / Math.max(0.5, rate)));
+        const watchdog = setTimeout(() => {
+          try { window.speechSynthesis.cancel(); } catch {}
+          finish();
+        }, estimatedMs);
+
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = lang;
         utterance.rate = rate;
 
-        utterance.onend = () => resolve();
-        utterance.onerror = () => resolve();
+        utterance.onend = () => finish();
+        utterance.onerror = () => finish();
 
         window.speechSynthesis.speak(utterance);
         return;
@@ -373,6 +422,49 @@ export class TtsService implements OnDestroy {
 
       resolve();
     });
+  }
+
+  private async resolveOfflineOrRemoteAudioUrl(
+    chapterId: string,
+    langCode: string,
+    remoteUrl: string
+  ): Promise<string> {
+    if (!Capacitor.isNativePlatform()) {
+      return remoteUrl;
+    }
+
+    // Issue #18: Include ?v= query version in cache key so updated MP3s invalidate stale disk cache
+    let versionTag = '1';
+    try {
+      const parsed = new URL(remoteUrl);
+      const v = parsed.searchParams.get('v');
+      if (v) versionTag = v.replace(/[^a-zA-Z0-9_-]/g, '');
+    } catch {}
+
+    const filePath = `audio_cache/${chapterId}_${langCode}_v${versionTag}.mp3`;
+    try {
+      const stat = await Filesystem.stat({ path: filePath, directory: Directory.Data });
+      if (stat.uri && stat.size && stat.size > 1000) {
+        return Capacitor.convertFileSrc(stat.uri);
+      }
+    } catch {
+      this.cleanupOldAudioVersions(chapterId, langCode, filePath).catch(() => {});
+      this.cacheAudioInBackground(filePath, remoteUrl);
+    }
+    return remoteUrl;
+  }
+
+  private async cleanupOldAudioVersions(chapterId: string, langCode: string, keepPath: string): Promise<void> {
+    try {
+      const dir = await Filesystem.readdir({ path: 'audio_cache', directory: Directory.Data });
+      const prefix = `${chapterId}_${langCode}_`;
+      for (const file of dir.files) {
+        const name = typeof file === 'string' ? file : file.name;
+        if (name.startsWith(prefix) && `audio_cache/${name}` !== keepPath) {
+          await Filesystem.deleteFile({ path: `audio_cache/${name}`, directory: Directory.Data }).catch(() => {});
+        }
+      }
+    } catch {}
   }
 
   private async stopNativeTtsEngine(): Promise<void> {
@@ -403,27 +495,6 @@ export class TtsService implements OnDestroy {
       en: 'en-IN'
     };
     return map[langCode] || 'hi-IN';
-  }
-
-  private async resolveOfflineOrRemoteAudioUrl(
-    chapterId: string,
-    langCode: string,
-    remoteUrl: string
-  ): Promise<string> {
-    if (!Capacitor.isNativePlatform()) {
-      return remoteUrl;
-    }
-
-    const filePath = `audio_cache/${chapterId}_${langCode}.mp3`;
-    try {
-      const stat = await Filesystem.stat({ path: filePath, directory: Directory.Data });
-      if (stat.uri && stat.size && stat.size > 1000) {
-        return Capacitor.convertFileSrc(stat.uri);
-      }
-    } catch {
-      this.cacheAudioInBackground(filePath, remoteUrl);
-    }
-    return remoteUrl;
   }
 
   private async cacheAudioInBackground(filePath: string, remoteUrl: string): Promise<void> {

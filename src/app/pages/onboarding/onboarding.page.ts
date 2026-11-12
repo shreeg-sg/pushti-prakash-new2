@@ -250,6 +250,9 @@ export class OnboardingPage implements OnInit {
     this.dataService.enabledLanguages$.subscribe(langs => {
       if (langs && langs.length > 0) {
         this.availableLanguages = langs;
+        if (!langs.some(l => l.code === this.selectedLang)) {
+          this.selectedLang = langs[0].code;
+        }
       }
       this.isLoadingConfig = false;
     });

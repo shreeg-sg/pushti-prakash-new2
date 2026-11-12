@@ -96,13 +96,14 @@ import { Book, Chapter } from '../../core/models/app-config.model';
             </div>
 
             <ion-label class="ion-text-wrap chapter-title-label">
-              <h2 class="chapter-primary-title">{{ localize(chapter.title) }}</h2>
-              <!-- Audio Status Indicator: Clear distinction between Studio MP3 & Native TTS -->
-              <p class="audio-available-hint">
-                <ion-icon [name]="hasRecordedAudio(chapter) ? 'volume-high-outline' : 'mic-outline'" class="audio-status-icon"></ion-icon>
-                <span>{{ getAudioBadgeLabel(chapter) }}</span>
-              </p>
-            </ion-label>
+            <h2 class="chapter-primary-title">{{ localize(chapter.title) }}</h2>
+            <p *ngIf="chapter.subtitle" class="chapter-subtitle-text">{{ localize(chapter.subtitle) }}</p>
+            <!-- Audio Status Indicator: Clear distinction between Studio MP3 & Native TTS -->
+            <p class="audio-available-hint">
+              <ion-icon [name]="hasRecordedAudio(chapter) ? 'volume-high-outline' : 'mic-outline'" class="audio-status-icon"></ion-icon>
+              <span>{{ getAudioBadgeLabel(chapter) }}</span>
+            </p>
+          </ion-label>
 
             <ion-icon
               slot="end"
@@ -113,9 +114,10 @@ import { Book, Chapter } from '../../core/models/app-config.model';
           </ion-item>
 
           <!-- Empty State -->
+          <!-- Empty State -->
           <div *ngIf="filteredChapters.length === 0" class="no-chapters-hint">
             <ion-icon name="document-text-outline" class="empty-chapter-icon"></ion-icon>
-            <p class="empty-chapter-title">No chapters match "{{ chapterSearchQuery }}"</p>
+            <p class="empty-chapter-title">{{ (uiText$ | async)?.['no_matches_title'] || 'No chapters match' }}: "{{ chapterSearchQuery }}"</p>
             <p class="empty-chapter-subtitle">Try searching by chapter name or order number</p>
           </div>
         </ion-list>
@@ -141,6 +143,13 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       opacity: 0.15;
       pointer-events: none;
       z-index: 0;
+    }
+
+    .chapter-subtitle-text {
+      font-size: 0.84rem;
+      color: var(--ion-color-medium);
+      line-height: 1.35;
+      margin: 2px 0 4px 0;
     }
 
     .chapters-wrapper {
@@ -381,12 +390,11 @@ export class ChaptersPage implements OnInit, OnDestroy {
       const titleMatch = ch.title
         ? Object.values(ch.title).some(t => String(t || '').toLowerCase().includes(q))
         : false;
-      const subtitleMatch = (ch as any).subtitle
-        ? Object.values((ch as any).subtitle).some((s: any) => String(s || '').toLowerCase().includes(q))
+      const subtitleMatch = ch.subtitle
+        ? Object.values(ch.subtitle).some(s => String(s || '').toLowerCase().includes(q))
         : false;
-      const orderMatch = String(ch.order) === q || String(ch.order).includes(q);
-      const idMatch = String(ch.id || '').toLowerCase().includes(q);
-      return titleMatch || subtitleMatch || orderMatch || idMatch;
+      const orderMatch = String(ch.order) === q;
+      return titleMatch || subtitleMatch || orderMatch;
     });
   }
 

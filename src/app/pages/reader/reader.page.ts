@@ -23,7 +23,8 @@ import {
   playSkipBackOutline,
   playSkipForwardOutline,
   speedometerOutline,
-  refreshOutline
+  refreshOutline,
+  homeOutline
 } from 'ionicons/icons';
 import { Observable, Subscription, combineLatest, firstValueFrom } from 'rxjs';
 import { switchMap, map } from 'rxjs/operators';
@@ -33,6 +34,7 @@ import { DataService } from '../../core/services/data.service';
 import { StorageService } from '../../core/services/storage.service';
 import { TtsService, PlayerState } from '../../core/services/tts.service';
 import { Book, Chapter } from '../../core/models/app-config.model';
+import { SecurityUtil } from '../../core/utils/security.util';
 
 @Component({
   selector: 'app-reader',
@@ -53,6 +55,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     <app-header [pageTitle]="activeChapterTitle">
       <ion-button
         headerEndActions
+        *ngIf="!isChapterUnavailable"
         (click)="onToggleBookmark()"
         aria-label="Toggle Bookmark">
         <ion-icon
@@ -64,7 +67,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     </app-header>
 
     <ion-content class="ion-padding reader-transcript-container">
-      <!-- Watermark strictly placed in background layer without slot="fixed" -->
       <div
         class="watermark-overlay"
         *ngIf="watermarkUrl$ | async as wmUrl"
@@ -72,9 +74,19 @@ import { Book, Chapter } from '../../core/models/app-config.model';
         aria-hidden="true">
       </div>
 
-      <div class="reader-body" *ngIf="activeBook && activeChapter">
+      <!-- Issue #21: Graceful fallback when book/chapter is hidden or invalid -->
+      <div class="transcript-error" *ngIf="isChapterUnavailable">
+        <p class="error-msg">This chapter is currently unavailable.</p>
+        <ion-button fill="outline" color="primary" (click)="goToDashboard()">
+          <ion-icon slot="start" name="home-outline"></ion-icon>
+          Back to Library
+        </ion-button>
+      </div>
+
+      <div class="reader-body" *ngIf="!isChapterUnavailable && activeBook && activeChapter">
         <div class="book-breadcrumb">{{ localize(activeBook.title) }}</div>
         <h1 class="chapter-heading">{{ localize(activeChapter.title) }}</h1>
+        <p *ngIf="activeChapter.subtitle" class="chapter-subheading">{{ localize(activeChapter.subtitle) }}</p>
 
         <!-- 100% Solid Opaque 3:4 Chapter Header Images -->
         <div class="chapter-images-list" *ngIf="chapterImages.length > 0 && !isLoadingTranscript">
@@ -91,7 +103,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
         <!-- Loading State -->
         <div class="transcript-loading" *ngIf="isLoadingTranscript">
           <ion-spinner name="crescent" color="primary"></ion-spinner>
-          <p class="loading-label">Loading sacred text...</p>
+          <p class="loading-label">{{ (uiText$ | async)?.['loading_text'] || 'Loading sacred text...' }}</p>
         </div>
 
         <!-- Error State with Retry -->
@@ -99,43 +111,43 @@ import { Book, Chapter } from '../../core/models/app-config.model';
           <p class="error-msg">Unable to load chapter content from media server.</p>
           <ion-button fill="outline" color="primary" (click)="retryLoadTranscript()">
             <ion-icon slot="start" name="refresh-outline"></ion-icon>
-            Tap to Retry
+            {{ (uiText$ | async)?.['retry_button'] || 'Tap to Retry' }}
           </ion-button>
         </div>
 
         <!-- Text Content -->
         <div class="transcript-content" *ngIf="!isLoadingTranscript && transcriptParagraphs.length > 0">
           <p
-            *ngFor="let paragraph of transcriptParagraphs"
+            *ngFor="let paragraph of transcriptParagraphs; let idx = index"
             class="transcript-paragraph"
-            [class.active-tts-chunk]="isChunkHighlighted(paragraph, (playerState$ | async))"
+            [class.active-tts-chunk]="isChunkHighlighted(idx, (playerState$ | async))"
             [innerHTML]="paragraph">
           </p>
         </div>
       </div>
     </ion-content>
 
-    <div class="floating-dock-wrapper" *ngIf="playerState$ | async as state">
+    <div class="floating-dock-wrapper" *ngIf="!isChapterUnavailable && (playerState$ | async) as state">
       <div class="sticky-stepper-bar">
-        <ion-button
-          fill="solid"
-          color="light"
-          class="stepper-nav-btn"
-          [disabled]="!prevChapterId"
-          (click)="goToSiblingChapter(prevChapterId)">
-          <ion-icon slot="start" name="play-skip-back-outline"></ion-icon>
-          Prev Chapter
-        </ion-button>
+      <ion-button
+      fill="solid"
+      color="light"
+      class="stepper-nav-btn"
+      [disabled]="!prevChapterId"
+      (click)="goToSiblingChapter(prevChapterId)">
+      <ion-icon slot="start" name="play-skip-back-outline"></ion-icon>
+      {{ (uiText$ | async)?.['prev_chapter'] || 'Prev Chapter' }}
+    </ion-button>
 
-        <ion-button
-          fill="solid"
-          color="light"
-          class="stepper-nav-btn"
-          [disabled]="!nextChapterId"
-          (click)="goToSiblingChapter(nextChapterId)">
-          Next Chapter
-          <ion-icon slot="end" name="play-skip-forward-outline"></ion-icon>
-        </ion-button>
+    <ion-button
+      fill="solid"
+      color="light"
+      class="stepper-nav-btn"
+      [disabled]="!nextChapterId"
+      (click)="goToSiblingChapter(nextChapterId)">
+      {{ (uiText$ | async)?.['next_chapter'] || 'Next Chapter' }}
+      <ion-icon slot="end" name="play-skip-forward-outline"></ion-icon>
+    </ion-button>
       </div>
 
       <div class="floating-audio-dock">
@@ -154,15 +166,16 @@ import { Book, Chapter } from '../../core/models/app-config.model';
           <span class="time-counter" *ngIf="state.mode === 'audio'">
             {{ formatSeconds(state.currentTime) }} / {{ formatSeconds(state.duration) }}
           </span>
+          <!-- Issue #17: Explicit Line/Verse indicator in TTS mode -->
           <span class="time-counter" *ngIf="state.mode === 'tts'">
-            {{ state.currentTime + 1 }} / {{ state.duration || 1 }}
+            Line {{ state.currentTime + 1 }} / {{ state.duration || 1 }}
           </span>
         </div>
 
         <ion-range
           class="player-scrub-bar"
           [min]="0"
-          [max]="state.duration > 0 ? state.duration : 1"
+          [max]="state.mode === 'tts' ? Math.max(0, (state.duration || 1) - 1) : (state.duration > 0 ? state.duration : 1)"
           [value]="state.currentTime"
           (ionKnobMoveEnd)="onSeek($event)">
         </ion-range>
@@ -211,7 +224,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       position: relative;
     }
 
-    /* Fixed Watermark strictly pinned in background layer */
     .watermark-overlay {
       position: fixed;
       top: 50%;
@@ -227,11 +239,10 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       z-index: 0;
     }
 
-    /* Reader Body sits above the watermark layer */
     .reader-body {
       max-width: 780px;
       margin: 0 auto;
-      padding-bottom: 230px;
+      padding-bottom: calc(270px + env(safe-area-inset-bottom, 0px));
       position: relative;
       z-index: 2;
     }
@@ -249,13 +260,20 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       font-size: 1.45rem;
       font-weight: 800;
       margin-top: 0;
-      margin-bottom: 18px;
+      margin-bottom: 6px;
       color: var(--ion-text-color);
+    }
+
+    .chapter-subheading {
+      font-size: 0.94rem;
+      font-weight: 500;
+      color: var(--ion-color-medium);
+      margin-top: 0;
+      margin-bottom: 18px;
       border-bottom: 2px solid rgba(var(--ion-color-primary-rgb), 0.15);
       padding-bottom: 10px;
     }
 
-    /* Center-Aligned Chapter Header Images Container */
     .chapter-images-list {
       display: flex;
       flex-direction: column;
@@ -276,17 +294,17 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       z-index: 6;
     }
 
-    /* 100% Solid, Opaque Hard Image (Zero Watermark Bleed) */
     .chapter-featured-img {
-      width: 100%;
-      max-width: 440px;
-      aspect-ratio: 4 / 3; /* 3:4 Height to Width ratio */
+      width: auto;
+      max-width: min(100%, 440px);
+      max-height: 360px;
+      height: auto;
       object-fit: contain;
       border-radius: 16px;
       box-shadow: 0 6px 22px rgba(0, 0, 0, 0.12);
       border: 1px solid rgba(0, 0, 0, 0.08);
-      background-color: #ffffff !important; /* Pure solid white base blocks background completely */
-      opacity: 1 !important; /* Hard, vivid, 100% solid opacity */
+      background-color: var(--ion-card-background, #ffffff) !important;
+      opacity: 1 !important;
       display: block;
       position: relative;
       z-index: 7;
@@ -331,7 +349,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       position: fixed;
       left: 12px;
       right: 12px;
-      bottom: 20px;
+      bottom: calc(16px + env(safe-area-inset-bottom, 0px));
       max-width: 680px;
       margin: 0 auto;
       z-index: 100;
@@ -443,6 +461,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
   `]
 })
 export class ReaderPage implements OnInit, OnDestroy {
+  protected readonly Math = Math;
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private toastCtrl = inject(ToastController);
@@ -459,8 +478,10 @@ export class ReaderPage implements OnInit, OnDestroy {
   public activeChapter?: Chapter;
   public activeChapterTitle = '';
   public transcriptParagraphs: string[] = [];
+  public paragraphChunkRanges: Array<{ start: number; end: number }> = [];
   public chapterImages: string[] = [];
   public isLoadingTranscript = false;
+  public isChapterUnavailable = false;
   public prevChapterId?: string;
   public nextChapterId?: string;
 
@@ -481,7 +502,8 @@ export class ReaderPage implements OnInit, OnDestroy {
       playSkipBackOutline,
       playSkipForwardOutline,
       speedometerOutline,
-      refreshOutline
+      refreshOutline,
+      homeOutline
     });
   }
 
@@ -510,8 +532,14 @@ export class ReaderPage implements OnInit, OnDestroy {
         })
       )
       .subscribe(async ({ resolved, lang, ttsLocale }) => {
-        if (!resolved) return;
+        if (!resolved) {
+          this.isChapterUnavailable = true;
+          this.activeBook = undefined;
+          this.activeChapter = undefined;
+          return;
+        }
 
+        this.isChapterUnavailable = false;
         this.activeBook = resolved.book;
         this.activeChapter = resolved.chapter;
         this.activeChapterTitle = this.dataService.localizeField(resolved.chapter.title, lang);
@@ -537,13 +565,30 @@ export class ReaderPage implements OnInit, OnDestroy {
       rawImages = chapter.images;
     }
 
-    this.chapterImages = rawImages.map(img => this.dataService.resolveMediaUrl(img));
+    this.chapterImages = rawImages
+      .map(img => this.dataService.resolveMediaUrl(img))
+      .filter(url => url.length > 0);
 
     const rawTranscript = this.dataService.localizeField(content.transcript, lang);
-    this.transcriptParagraphs = rawTranscript
+    const rawParagraphs = rawTranscript
       .split(/\n\s*\n/g)
       .map(p => p.trim())
       .filter(p => p.length > 0);
+
+    // Issue #16: Map exact TTS chunk index range per paragraph so repeated refrains don't highlight multiple paragraphs
+    let chunkCursor = 0;
+    this.paragraphChunkRanges = rawParagraphs.map(p => {
+      const chunksInPara = p
+        .replace(/([।॥.!?])\s+/g, '$1\n')
+        .split(/\n+/g)
+        .map(s => s.trim())
+        .filter(s => s.length > 0).length;
+      const range = { start: chunkCursor, end: chunkCursor + Math.max(1, chunksInPara) - 1 };
+      chunkCursor += Math.max(1, chunksInPara);
+      return range;
+    });
+
+    this.transcriptParagraphs = rawParagraphs.map(p => SecurityUtil.sanitizeSafeHtml(p));
 
     const chapters = book.chapters;
     const idx = chapters.findIndex(c => c.id === chapter.id);
@@ -572,14 +617,16 @@ export class ReaderPage implements OnInit, OnDestroy {
 
   public onImageLoadError(failedUrl: string): void {
     console.warn('[ReaderPage] Could not load image from:', failedUrl);
-    // Automatically removes broken URL from the array to prevent browser broken-icon placeholder
     this.chapterImages = this.chapterImages.filter(url => url !== failedUrl);
   }
 
+  // Issue #15: Look up configured ttsLocale from enabledLanguages$ instead of hardcoding `${lang}-IN`
   public async retryLoadTranscript(): Promise<void> {
     if (this.activeBook && this.activeChapter) {
       const lang = this.currentLang;
-      const ttsLocale = `${lang}-IN`;
+      const enabledLangs = await firstValueFrom(this.dataService.enabledLanguages$);
+      const langMeta = enabledLangs.find(l => l.code === lang);
+      const ttsLocale = langMeta?.ttsLocale || `${lang}-IN`;
       await this.loadChapterTextAndAudio(this.activeBook, this.activeChapter, lang, ttsLocale);
     }
   }
@@ -619,11 +666,13 @@ export class ReaderPage implements OnInit, OnDestroy {
     }
   }
 
-  public isChunkHighlighted(paragraph: string, state: PlayerState | null): boolean {
-    if (!state || state.mode !== 'tts' || !state.isPlaying || !state.activeChunkText) {
+  public isChunkHighlighted(paragraphIdx: number, state: PlayerState | null): boolean {
+    if (!state || state.mode !== 'tts' || !state.isPlaying) {
       return false;
     }
-    return paragraph.includes(state.activeChunkText);
+    const range = this.paragraphChunkRanges[paragraphIdx];
+    if (!range) return false;
+    return state.activeChunkIndex >= range.start && state.activeChunkIndex <= range.end;
   }
 
   public async goToSiblingChapter(targetChapterId?: string): Promise<void> {
@@ -633,6 +682,10 @@ export class ReaderPage implements OnInit, OnDestroy {
     this.shouldAutoPlayNext = currentState.isPlaying;
 
     this.router.navigate(['/reader', this.bookId, targetChapterId], { replaceUrl: true });
+  }
+
+  public goToDashboard(): void {
+    this.router.navigate(['/dashboard'], { replaceUrl: true });
   }
 
   public formatSeconds(sec: number): string {

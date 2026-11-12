@@ -1,5 +1,5 @@
 {
-    "appId": "com.sameergujarathi.pushtiprakash",
-    "appName": "PushtiPrakash",
-    "webDir": "dist/app/browser"
-  }
+  "appId": "com.pushtiprakash.reader",
+  "appName": "PushtiPrakash",
+  "webDir": "dist/app/browser"
+}

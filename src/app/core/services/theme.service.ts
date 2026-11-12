@@ -1,6 +1,7 @@
 import { Injectable, Inject } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
 import { AppIdentity, FontSizeScale } from '../models/app-config.model';
+import { SecurityUtil } from '../utils/security.util';
 
 @Injectable({
   providedIn: 'root'
@@ -20,56 +21,55 @@ export class ThemeService {
 
   constructor(@Inject(DOCUMENT) private document: Document) {}
 
-  /**
-   * Dynamically applies the remote JSON theme and watermark to the DOM :root element.
-   * If watermarkUrl is missing or empty, automatically falls back to logoUrl.
-   */
   public applyAppIdentityTheme(identity: AppIdentity): void {
     if (!identity?.theme) return;
 
     const root = this.document.documentElement;
     const { theme, watermarkUrl, logoUrl } = identity;
 
-    // 1. Apply core Ionic color palettes (--ion-color-primary, --ion-color-secondary, --ion-color-tertiary)
-    this.setIonicColorVariable(root, 'primary', theme.primary);
-    this.setIonicColorVariable(root, 'secondary', theme.secondary);
-    this.setIonicColorVariable(root, 'tertiary', theme.tertiary);
+    const safePrimary = SecurityUtil.sanitizeHexColor(theme.primary, '#8B2635');
+    const safeSecondary = SecurityUtil.sanitizeHexColor(theme.secondary, '#D4AF37');
+    const safeTertiary = SecurityUtil.sanitizeHexColor(theme.tertiary, '#2E5A44');
 
-    // 2. Apply background and surface variables
+    this.setIonicColorVariable(root, 'primary', safePrimary);
+    this.setIonicColorVariable(root, 'secondary', safeSecondary);
+    this.setIonicColorVariable(root, 'tertiary', safeTertiary);
+
     if (theme.background) {
-      const bgRgb = this.hexToRgbString(theme.background);
-      root.style.setProperty('--ion-background-color', theme.background);
+      const safeBg = SecurityUtil.sanitizeHexColor(theme.background, '#FFFDF9');
+      const bgRgb = this.hexToRgbString(safeBg);
+      root.style.setProperty('--ion-background-color', safeBg);
       root.style.setProperty('--ion-background-color-rgb', bgRgb);
-      root.style.setProperty('--app-background-color', theme.background);
+      root.style.setProperty('--app-background-color', safeBg);
     }
 
     if (theme.surface) {
-      root.style.setProperty('--ion-card-background', theme.surface);
-      root.style.setProperty('--ion-item-background', theme.surface);
-      root.style.setProperty('--ion-toolbar-background', theme.primary);
-      root.style.setProperty('--ion-toolbar-color', this.getContrastHex(theme.primary));
+      const safeSurface = SecurityUtil.sanitizeHexColor(theme.surface, '#FFF8EC');
+      root.style.setProperty('--ion-card-background', safeSurface);
+      root.style.setProperty('--ion-item-background', safeSurface);
+      root.style.setProperty('--ion-toolbar-background', safePrimary);
+      root.style.setProperty('--ion-toolbar-color', this.getContrastHex(safePrimary));
     }
 
     if (theme.textPrimary) {
-      root.style.setProperty('--ion-text-color', theme.textPrimary);
-      root.style.setProperty('--ion-text-color-rgb', this.hexToRgbString(theme.textPrimary));
+      const safeText = SecurityUtil.sanitizeHexColor(theme.textPrimary, '#2C1810');
+      root.style.setProperty('--ion-text-color', safeText);
+      root.style.setProperty('--ion-text-color-rgb', this.hexToRgbString(safeText));
     }
 
-    // 3. Apply custom watermark CSS variable (fall back to logoUrl if watermarkUrl is not provided)
-    const effectiveWatermark = (watermarkUrl && watermarkUrl.trim().length > 0)
+    const rawWatermark = (watermarkUrl && watermarkUrl.trim().length > 0)
       ? watermarkUrl.trim()
       : (logoUrl && logoUrl.trim().length > 0 ? logoUrl.trim() : null);
 
-    if (effectiveWatermark) {
-      root.style.setProperty('--app-watermark-image', `url("${effectiveWatermark}")`);
+    const safeWatermark = SecurityUtil.sanitizeCssUrl(rawWatermark);
+
+    if (safeWatermark) {
+      root.style.setProperty('--app-watermark-image', `url("${safeWatermark}")`);
     } else {
       root.style.setProperty('--app-watermark-image', 'none');
     }
   }
 
-  /**
-   * Scales transcript and body text dynamically based on Header ActionSheet selection.
-   */
   public applyFontSize(scale: FontSizeScale): void {
     const root = this.document.documentElement;
     root.style.setProperty('--app-reader-font-size', this.FONT_SCALE_MAP[scale] ?? this.FONT_SCALE_MAP.medium);
@@ -77,9 +77,6 @@ export class ThemeService {
     root.setAttribute('data-font-scale', scale);
   }
 
-  /**
-   * Computes base, RGB, contrast, shade, and tint variables required by Ionic components.
-   */
   private setIonicColorVariable(root: HTMLElement, name: string, hex: string): void {
     if (!hex) return;
     const cleanHex = hex.trim();
@@ -117,7 +114,6 @@ export class ThemeService {
 
   private getContrastHex(hex: string): string {
     const { r, g, b } = this.hexToRgb(hex);
-    // YIQ perceived luminance formula
     const yiq = (r * 299 + g * 587 + b * 114) / 1000;
     return yiq >= 145 ? '#1a1a1a' : '#ffffff';
   }

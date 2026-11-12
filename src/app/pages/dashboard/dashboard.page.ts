@@ -113,42 +113,42 @@ import { Book } from '../../core/models/app-config.model';
                   <p *ngIf="book.subtitle" class="book-card-subtitle">{{ localize(book.subtitle) }}</p>
 
                   <div class="chapter-count-badge">
-                    <ion-icon name="book-outline"></ion-icon>
-                    <span>{{ book.chapters.length }} Chapters</span>
-                  </div>
+                  <ion-icon name="book-outline"></ion-icon>
+                  <span>{{ book.chapters.length }} {{ (uiText$ | async)?.['chapters_label'] || 'Chapters' }}</span>
+                </div>
                 </div>
               </div>
             </ion-col>
           </ng-container>
 
           <!-- Empty State A: User Searched and Found No Matches -->
-          <ion-col size="12" *ngIf="books.length === 0 && currentSearchQuery.trim().length > 0" class="no-books-card ion-text-center">
-            <div class="empty-state-box">
-              <ion-icon name="search-outline" class="empty-icon"></ion-icon>
-              <h3 class="empty-title">No books match "{{ currentSearchQuery }}"</h3>
-              <p class="empty-hint">Try searching in Hindi, Gujarati, or English</p>
-            </div>
-          </ion-col>
+        <ion-col size="12" *ngIf="books.length === 0 && currentSearchQuery.trim().length > 0" class="no-books-card ion-text-center">
+          <div class="empty-state-box">
+            <ion-icon name="search-outline" class="empty-icon"></ion-icon>
+            <h3 class="empty-title">{{ (uiText$ | async)?.['no_matches_title'] || 'No books match' }}: "{{ currentSearchQuery }}"</h3>
+            <p class="empty-hint">Try searching in Hindi, Gujarati, or English</p>
+          </div>
+        </ion-col>
 
-          <!-- Empty State B: Network Outage or Catalog Failed to Load -->
-          <ion-col size="12" *ngIf="books.length === 0 && currentSearchQuery.trim().length === 0" class="no-books-card ion-text-center">
-            <div class="empty-state-box">
-              <ion-icon name="cloud-offline-outline" class="empty-icon warning-icon"></ion-icon>
-              <h3 class="empty-title">Unable to Connect to Library</h3>
-              <p class="empty-hint">Please check your internet connection and tap below to retry.</p>
-              
-              <ion-button
-                fill="outline"
-                color="primary"
-                class="retry-btn ion-margin-top"
-                [disabled]="isRetrying"
-                (click)="onRetrySync()">
-                <ion-spinner name="crescent" *ngIf="isRetrying"></ion-spinner>
-                <ion-icon slot="start" name="refresh-outline" *ngIf="!isRetrying"></ion-icon>
-                {{ isRetrying ? 'Connecting...' : 'Tap to Retry' }}
-              </ion-button>
-            </div>
-          </ion-col>
+        <!-- Empty State B: Network Outage or Catalog Failed to Load -->
+        <ion-col size="12" *ngIf="books.length === 0 && currentSearchQuery.trim().length === 0" class="no-books-card ion-text-center">
+          <div class="empty-state-box">
+            <ion-icon name="cloud-offline-outline" class="empty-icon warning-icon"></ion-icon>
+            <h3 class="empty-title">{{ (uiText$ | async)?.['offline_title'] || 'Unable to Connect to Library' }}</h3>
+            <p class="empty-hint">{{ (uiText$ | async)?.['offline_hint'] || 'Please check your internet connection and tap below to retry.' }}</p>
+
+            <ion-button
+              fill="outline"
+              color="primary"
+              class="retry-btn ion-margin-top"
+              [disabled]="isRetrying"
+              (click)="onRetrySync()">
+              <ion-spinner name="crescent" *ngIf="isRetrying"></ion-spinner>
+              <ion-icon slot="start" name="refresh-outline" *ngIf="!isRetrying"></ion-icon>
+              {{ isRetrying ? '...' : ((uiText$ | async)?.['retry_button'] || 'Tap to Retry') }}
+            </ion-button>
+          </div>
+        </ion-col>
         </ion-row>
       </ion-grid>
     </ion-content>
@@ -436,9 +436,14 @@ export class DashboardPage implements OnInit, OnDestroy {
       if (!q) return books;
       return books.filter(book => {
         const titleMatch = Object.values(book.title || {}).some(t => (t || '').toLowerCase().includes(q));
-        const subtitleMatch = book.subtitle ? Object.values(book.subtitle).some(s => (s || '').toLowerCase().includes(q)) : false;
-        const idMatch = (book.id || '').toLowerCase().includes(q);
-        return titleMatch || subtitleMatch || idMatch;
+        const subtitleMatch = book.subtitle
+          ? Object.values(book.subtitle).some(s => (s || '').toLowerCase().includes(q))
+          : false;
+        const chapterMatch = (book.chapters || []).some(ch =>
+          Object.values(ch.title || {}).some(ct => (ct || '').toLowerCase().includes(q)) ||
+          (ch.subtitle ? Object.values(ch.subtitle).some(cs => (cs || '').toLowerCase().includes(q)) : false)
+        );
+        return titleMatch || subtitleMatch || chapterMatch;
       });
     })
   );
@@ -497,11 +502,14 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   public async onPullRefresh(event: CustomEvent): Promise<void> {
-    const result = await this.dataService.syncWithRemote();
+    const result = await this.dataService.syncWithRemote(true);
     (event.target as HTMLIonRefresherElement).complete();
+    const uiText = await firstValueFrom(this.dataService.uiText$);
 
     const toast = await this.toastCtrl.create({
-      message: result.success ? 'Library updated successfully' : 'Could not reach server. Showing saved library.',
+      message: result.success
+        ? (uiText['library_updated'] || 'Library updated successfully')
+        : (uiText['offline_hint'] || 'Could not reach server. Showing saved library.'),
       duration: 2000,
       position: 'bottom',
       color: result.success ? 'success' : 'medium'

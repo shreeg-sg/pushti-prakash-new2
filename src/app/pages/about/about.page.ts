@@ -17,6 +17,7 @@ import { map } from 'rxjs/operators';
 import { HeaderComponent } from '../../layout/header.component';
 import { DataService } from '../../core/services/data.service';
 import { StorageService } from '../../core/services/storage.service';
+import { SecurityUtil } from '../../core/utils/security.util';
 
 @Component({
   selector: 'app-about',
@@ -35,7 +36,7 @@ import { StorageService } from '../../core/services/storage.service';
   template: `
     <app-header></app-header>
 
-    <ion-content class="ion-padding reader-transcript-container">
+    <ion-content class="ion-padding about-page-content">
       <div class="about-container" *ngIf="viewModel$ | async as vm">
         <ion-card class="about-card">
           <div class="about-logo-box" *ngIf="vm.logoUrl">
@@ -50,25 +51,25 @@ import { StorageService } from '../../core/services/storage.service';
             <p class="about-description">{{ vm.description }}</p>
 
             <!-- Centered Contact Links -->
-            <div class="contact-links" *ngIf="vm.contactEmail || vm.websiteUrl">
-              <a *ngIf="vm.contactEmail" [href]="'mailto:' + vm.contactEmail" class="contact-pill-link">
+            <div class="contact-links" *ngIf="vm.safeMailtoHref || vm.safeWebsiteUrl">
+              <a *ngIf="vm.safeMailtoHref" [href]="vm.safeMailtoHref" class="contact-pill-link">
                 <ion-icon name="mail-outline"></ion-icon>
                 <span>{{ vm.contactEmail }}</span>
               </a>
 
-              <a *ngIf="vm.websiteUrl" [href]="vm.websiteUrl" target="_blank" rel="noopener noreferrer" class="contact-pill-link">
+              <a *ngIf="vm.safeWebsiteUrl" [href]="vm.safeWebsiteUrl" target="_blank" rel="noopener noreferrer" class="contact-pill-link">
                 <ion-icon name="globe-outline"></ion-icon>
-                <span>{{ vm.websiteUrl }}</span>
+                <span>{{ vm.safeWebsiteUrl }}</span>
               </a>
             </div>
 
             <!-- Centered Feedback CTA -->
-            <div class="feedback-cta-wrapper" *ngIf="vm.feedbackUrl">
+            <div class="feedback-cta-wrapper" *ngIf="vm.safeFeedbackUrl">
               <ion-button
                 expand="block"
                 color="primary"
                 class="feedback-btn"
-                (click)="openFeedbackForm(vm.feedbackUrl)">
+                (click)="openFeedbackForm(vm.safeFeedbackUrl)">
                 <ion-icon slot="start" name="chatbox-ellipses-outline"></ion-icon>
                 {{ vm.feedbackButtonLabel }}
               </ion-button>
@@ -107,8 +108,8 @@ import { StorageService } from '../../core/services/storage.service';
     }
     .about-description {
       text-align: center !important;
-      font-size: var(--app-reader-font-size, 1.05rem);
-      line-height: var(--app-reader-line-height, 1.6);
+      font-size: 1rem;
+      line-height: 1.6;
       margin: 12px auto 20px;
       white-space: pre-line;
       max-width: 560px;
@@ -157,17 +158,28 @@ export class AboutPage {
     this.dataService.uiText$,
     this.storageService.selectedLanguage$
   ]).pipe(
-    map(([cfg, uiText, lang]) => ({
-      logoUrl: this.dataService.resolveMediaUrl(cfg.app_identity.logoUrl),
-      appName:
-        this.dataService.localizeField(cfg.app_identity.appName, lang) ||
-        cfg.app_identity.defaultAppName,
-      description: this.dataService.localizeField(cfg.about_info?.description, lang),
-      contactEmail: cfg.about_info?.contactEmail,
-      websiteUrl: cfg.about_info?.websiteUrl,
-      feedbackUrl: this.dataService.localizeField(cfg.about_info?.feedback_links, lang),
-      feedbackButtonLabel: uiText['feedback_cta'] || 'Submit Feedback'
-    }))
+    map(([cfg, uiText, lang]) => {
+      const rawEmail = (cfg.about_info?.contactEmail || '').trim();
+      const safeMailtoHref = rawEmail
+        ? SecurityUtil.sanitizeExternalUrl(`mailto:${rawEmail}`, true)
+        : '';
+      const safeWebsiteUrl = SecurityUtil.sanitizeExternalUrl(cfg.about_info?.websiteUrl);
+      const rawFeedback = this.dataService.localizeField(cfg.about_info?.feedback_links, lang);
+      const safeFeedbackUrl = SecurityUtil.sanitizeExternalUrl(rawFeedback);
+
+      return {
+        logoUrl: this.dataService.resolveMediaUrl(cfg.app_identity.logoUrl),
+        appName:
+          this.dataService.localizeField(cfg.app_identity.appName, lang) ||
+          cfg.app_identity.defaultAppName,
+        description: this.dataService.localizeField(cfg.about_info?.description, lang),
+        contactEmail: rawEmail,
+        safeMailtoHref,
+        safeWebsiteUrl,
+        safeFeedbackUrl,
+        feedbackButtonLabel: uiText['feedback_cta'] || 'Submit Feedback'
+      };
+    })
   );
 
   constructor() {
@@ -175,7 +187,8 @@ export class AboutPage {
   }
 
   public openFeedbackForm(url: string): void {
-    if (!url) return;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    const safeUrl = SecurityUtil.sanitizeExternalUrl(url);
+    if (!safeUrl) return;
+    window.open(safeUrl, '_blank', 'noopener,noreferrer');
   }
 }

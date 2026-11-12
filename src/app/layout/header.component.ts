@@ -10,7 +10,8 @@ import {
   IonIcon,
   IonTitle,
   IonPopover,
-  NavController
+  NavController,
+  ToastController
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
@@ -22,7 +23,7 @@ import {
   checkmarkOutline,
   searchOutline
 } from 'ionicons/icons';
-import { Observable, combineLatest } from 'rxjs';
+import { Observable, combineLatest, firstValueFrom } from 'rxjs';
 import { filter, map, startWith } from 'rxjs/operators';
 
 import { DataService } from '../core/services/data.service';
@@ -346,6 +347,7 @@ export class HeaderComponent implements OnInit {
   private navCtrl = inject(NavController);
   private dataService = inject(DataService);
   private storageService = inject(StorageService);
+  private toastCtrl = inject(ToastController);
 
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
   public enabledLanguages$: Observable<SupportedLanguage[]> = this.dataService.enabledLanguages$;
@@ -405,7 +407,7 @@ export class HeaderComponent implements OnInit {
     });
   }
 
-  ngOnInit(): void {}
+  ngOnInit(): void { }
 
   public toggleSearch(): void {
     this.isSearchActive = !this.isSearchActive;
@@ -435,10 +437,28 @@ export class HeaderComponent implements OnInit {
 
   public async onLanguageChange(code: string): Promise<void> {
     await this.storageService.setLanguage(code);
+    const langs = await firstValueFrom(this.enabledLanguages$);
+    const label = langs.find((l: SupportedLanguage) => l.code === code)?.name || code.toUpperCase();
+    const toast = await this.toastCtrl.create({
+      message: `${label}`,
+      duration: 1200,
+      position: 'bottom',
+      color: 'dark'
+    });
+    await toast.present();
   }
-
+  
   public async setFontScale(scale: FontSizeScale): Promise<void> {
     await this.storageService.setFontSize(scale);
+    const uiText = await firstValueFrom(this.uiText$);
+    const key = `font_${scale}`;
+    const toast = await this.toastCtrl.create({
+      message: `${uiText['font_size_title'] || 'Font Size'}: ${uiText[key] || scale}`,
+      duration: 1200,
+      position: 'bottom',
+      color: 'dark'
+    });
+    await toast.present();
   }
 
   public trackByLangCode(_index: number, lang: SupportedLanguage): string {

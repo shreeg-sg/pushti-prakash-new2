@@ -1,7 +1,7 @@
 export type StorageProvider = 'jsdelivr' | 'github_raw' | 'cloudflare' | 'firebase';
 
 // Production default set to 'jsdelivr' to avoid GitHub 60 req/hr IP blocks
-const PROD_ACTIVE_PROVIDER: StorageProvider = 'github_raw';
+const PROD_ACTIVE_PROVIDER: StorageProvider = 'jsdelivr';
 
 const PROD_PROVIDER_CONFIGS: Record<StorageProvider, { configUrl: string; mediaBaseUrl: string }> = {
   jsdelivr: {
@@ -13,12 +13,12 @@ const PROD_PROVIDER_CONFIGS: Record<StorageProvider, { configUrl: string; mediaB
     mediaBaseUrl: 'https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets'
   },
   cloudflare: {
-    configUrl: 'https://media.pushtiprakash.com/assets/mock/',
-    mediaBaseUrl: 'https://media.pushtiprakash.com/assets'
+    configUrl: '',
+    mediaBaseUrl: ''
   },
   firebase: {
-    configUrl: 'https://firebasestorage.googleapis.com/v0/b/pushtiprakash-app.appspot.com/o/mock%2F',
-    mediaBaseUrl: 'https://firebasestorage.googleapis.com/v0/b/pushtiprakash-app.appspot.com/o/'
+    configUrl: '',
+    mediaBaseUrl: ''
   }
 };
 
@@ -35,5 +35,5 @@ export const environment = {
   defaultMediaBaseUrl: PROD_PROVIDER_CONFIGS[PROD_ACTIVE_PROVIDER].mediaBaseUrl,
 
   fallbackMockPath: 'assets/mock/',
-  developerCredit: 'Developed by Sameer Purushottam Gujarathi'
+  developerCredit: ''
 };
