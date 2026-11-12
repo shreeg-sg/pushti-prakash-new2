@@ -1,5 +1,7 @@
 name: White-Label iOS Application Build
 
+# Runs ONLY when manually launched from the GitHub Actions tab.
+# It does NOT run on commit, push, or pull request.
 on:
   workflow_dispatch:
     inputs:
@@ -14,24 +16,29 @@ on:
         default: 'PushtiPrakash'
         type: string
       app_id:
-        description: 'Apple Bundle Identifier (e.g., com.sameergujarathi.pushtiprakash)'
+        description: 'Apple Bundle Identifier (e.g., com.pushtiprakash.reader)'
         required: true
-        default: 'com.sameergujarathi.pushtiprakash'
+        default: 'com.pushtiprakash.reader'
         type: string
       firebase_config_url:
         description: 'Remote Config URL for this Client'
         required: true
-        default: 'https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets/mock/'
+        default: 'https://cdn.jsdelivr.net/gh/shreeg-sg/pushtiprakash-media@main/src/assets/mock/'
         type: string
       logo_url:
-        description: 'Direct URL to Client Logo PNG (for iOS AppIcon 1024x1024)'
+        description: 'Direct URL to Client Logo PNG (for iOS AppIcon & Notifications)'
         required: false
-        default: 'https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets/images/logo.png'
+        default: 'https://cdn.jsdelivr.net/gh/shreeg-sg/pushtiprakash-media@main/src/assets/images/logo.png'
         type: string
       build_version:
         description: 'Semantic App Version (e.g., 1.0.0)'
         required: true
         default: '1.0.0'
+        type: string
+      version_code:
+        description: 'Apple Build Number / CFBundleVersion (e.g., 1, 2, 3...)'
+        required: true
+        default: '1'
         type: string
 
 jobs:
@@ -82,17 +89,21 @@ jobs:
           fi
           npx cap sync ios
 
-      - name: Stamp iOS App Name in Info.plist
+      - name: Stamp iOS App Name, Bundle ID & Version in Info.plist
         env:
           APP_NAME: ${{ inputs.app_name }}
+          BUILD_VERSION: ${{ inputs.build_version }}
+          VERSION_CODE: ${{ inputs.version_code }}
         run: |
           PLIST_PATH="ios/App/App/Info.plist"
           if [ -f "$PLIST_PATH" ]; then
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName \"${APP_NAME}\"" "$PLIST_PATH" || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string \"${APP_NAME}\"" "$PLIST_PATH"
             /usr/libexec/PlistBuddy -c "Set :CFBundleName \"${APP_NAME}\"" "$PLIST_PATH" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString \"${BUILD_VERSION}\"" "$PLIST_PATH" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion \"${VERSION_CODE}\"" "$PLIST_PATH" || true
           fi
 
-      - name: Stamp iOS App Icon from Client Logo
+      - name: Stamp iOS App & Notification Icon from Client Logo
         run: |
           mkdir -p /tmp
           if [ -f "src/assets/images/logo.png" ]; then
@@ -104,6 +115,7 @@ jobs:
           fi
 
           if [ -s /tmp/logo.png ]; then
+            python3 -m pip install --quiet Pillow || true
             ICON_DIR="ios/App/App/Assets.xcassets/AppIcon.appiconset"
             mkdir -p "$ICON_DIR"
 
@@ -121,7 +133,13 @@ jobs:
                     'AppIcon-60@2x.png': 120,
                     'AppIcon-83.5@2x.png': 167,
                     'AppIcon-76@2x.png': 152,
-                    'AppIcon-76@1x.png': 76
+                    'AppIcon-76@1x.png': 76,
+                    'AppIcon-40@3x.png': 120,
+                    'AppIcon-40@2x.png': 80,
+                    'AppIcon-29@3x.png': 87,
+                    'AppIcon-29@2x.png': 58,
+                    'AppIcon-20@3x.png': 60,
+                    'AppIcon-20@2x.png': 40
                 }
                 for fname, size in targets.items():
                     fg_size = int(size * 0.68)
@@ -130,9 +148,28 @@ jobs:
                     offset = ((size - fg_size) // 2, (size - fg_size) // 2)
                     canvas.paste(resized, offset, mask=resized)
                     canvas.convert('RGB').save(f'{icon_dir}/{fname}')
-                print('Generated 68% scaled iOS icons without alpha transparency.')
+                print('Generated 68% scaled iOS app & notification icons without alpha transparency.')
             "
-            echo '{"images":[{"idiom":"universal","platform":"ios","size":"1024x1024"},{"idiom":"universal","platform":"ios","size":"1024x1024","filename":"AppIcon-512@2x.png"}],"info":{"author":"xcode","version":1}}' > "$ICON_DIR/Contents.json"
+
+            cat << 'EOF' > "$ICON_DIR/Contents.json"
+            {
+              "images": [
+                { "idiom": "universal", "platform": "ios", "size": "1024x1024", "filename": "AppIcon-512@2x.png" },
+                { "idiom": "iphone", "scale": "3x", "size": "60x60", "filename": "AppIcon-60@3x.png" },
+                { "idiom": "iphone", "scale": "2x", "size": "60x60", "filename": "AppIcon-60@2x.png" },
+                { "idiom": "ipad", "scale": "2x", "size": "83.5x83.5", "filename": "AppIcon-83.5@2x.png" },
+                { "idiom": "ipad", "scale": "2x", "size": "76x76", "filename": "AppIcon-76@2x.png" },
+                { "idiom": "ipad", "scale": "1x", "size": "76x76", "filename": "AppIcon-76@1x.png" },
+                { "idiom": "iphone", "scale": "3x", "size": "40x40", "filename": "AppIcon-40@3x.png" },
+                { "idiom": "iphone", "scale": "2x", "size": "40x40", "filename": "AppIcon-40@2x.png" },
+                { "idiom": "iphone", "scale": "3x", "size": "29x29", "filename": "AppIcon-29@3x.png" },
+                { "idiom": "iphone", "scale": "2x", "size": "29x29", "filename": "AppIcon-29@2x.png" },
+                { "idiom": "iphone", "scale": "3x", "size": "20x20", "filename": "AppIcon-20@3x.png" },
+                { "idiom": "iphone", "scale": "2x", "size": "20x20", "filename": "AppIcon-20@2x.png" }
+              ],
+              "info": { "author": "xcode", "version": 1 }
+            }
+            EOF
             echo "Successfully generated iOS AppIcon catalog scaled at 68%!"
           else
             echo "Warning: Logo PNG not found, defaulting to template icons."
@@ -152,6 +189,6 @@ jobs:
       - name: Upload iOS Xcode Archive Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.client_key }}-ios-xcarchive-${{ inputs.build_version }}
+          name: ${{ inputs.client_key }}-ios-xcarchive-v${{ inputs.build_version }}
           path: ios/App/build/App.xcarchive
           retention-days: 14
