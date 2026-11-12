@@ -164,24 +164,24 @@ jobs:
         run: |
           BUILD_TOOLS_DIR=$(find $ANDROID_HOME/build-tools -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
           echo "Using Android Build Tools at: $BUILD_TOOLS_DIR"
-          
+
           # Generate signing keystore
           keytool -genkey -v -keystore release.keystore \
             -alias pushtikey -keyalg RSA -keysize 2048 -validity 10000 \
             -storepass android123 -keypass android123 \
             -dname "CN=PushtiPrakash, OU=Mobile, O=Pushti, L=Mumbai, S=MH, C=IN"
-          
+
           # Align the unsigned APK
           $BUILD_TOOLS_DIR/zipalign -v -p 4 \
             android/app/build/outputs/apk/release/app-release-unsigned.apk \
             android/app/build/outputs/apk/release/app-release-aligned.apk
-          
+
           # Sign with apksigner (v1, v2, v3 schemes)
           $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore \
             --ks-pass pass:android123 --key-pass pass:android123 \
             --out android/app/build/outputs/apk/release/app-release-signed.apk \
             android/app/build/outputs/apk/release/app-release-aligned.apk
-          
+
           # Verify signature
           $BUILD_TOOLS_DIR/apksigner verify -v android/app/build/outputs/apk/release/app-release-signed.apk
           echo "APK successfully signed and verified!"

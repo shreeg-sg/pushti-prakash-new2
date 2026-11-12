@@ -4,7 +4,7 @@ export type StorageProvider = 'jsdelivr' | 'github_raw' | 'cloudflare' | 'fireba
 // 1. ACTIVE PROVIDER: Set to 'jsdelivr' for production CDN edge delivery
 // Options: 'jsdelivr' | 'github_raw' | 'cloudflare' | 'firebase'
 // ============================================================================
-const ACTIVE_PROVIDER: StorageProvider = 'github_raw';
+const ACTIVE_PROVIDER: StorageProvider = 'jsdelivr';
 
 // ============================================================================
 // 2. ENDPOINT DIRECTORY FOR ALL 4 PROVIDERS
