@@ -1,5 +1,11 @@
 {
   "appId": "com.pushtiprakash.reader",
   "appName": "PushtiPrakash",
-  "webDir": "dist/app/browser"
+  "webDir": "dist/app/browser",
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_notify",
+      "iconColor": "#8B2635"
+    }
+  }
 }

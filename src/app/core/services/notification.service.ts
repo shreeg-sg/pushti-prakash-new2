@@ -80,7 +80,7 @@ export class NotificationService implements OnDestroy {
 
       for (const item of activeSchedules) {
         const iconConfig = {
-          smallIcon: 'ic_launcher',
+          smallIcon: 'ic_stat_notify',
           largeIcon: 'ic_launcher',
           iconColor: '#8B2635'
         };

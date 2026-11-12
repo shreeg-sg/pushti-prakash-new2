@@ -131,17 +131,24 @@ jobs:
 
           if [ -s /tmp/logo.png ]; then
             sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick || true
-            for res in "mdpi:48" "hdpi:72" "xhdpi:96" "xxhdpi:144" "xxxhdpi:192"; do
+            for res in "mdpi:48:24" "hdpi:72:36" "xhdpi:96:48" "xxhdpi:144:72" "xxxhdpi:192:96"; do
               folder=$(echo $res | cut -d: -f1)
               size=$(echo $res | cut -d: -f2)
+              notif_size=$(echo $res | cut -d: -f3)
+
               dir="android/app/src/main/res/mipmap-${folder}"
               mkdir -p "$dir"
               icon_size=$(( size * 68 / 100 ))
               convert /tmp/logo.png -resize "${icon_size}x${icon_size}" -gravity center -background none -extent "${size}x${size}" "$dir/ic_launcher.png" || true
               convert /tmp/logo.png -resize "${icon_size}x${icon_size}" -gravity center -background none -extent "${size}x${size}" "$dir/ic_launcher_round.png" || true
               convert /tmp/logo.png -resize "${icon_size}x${icon_size}" -gravity center -background none -extent "${size}x${size}" "$dir/ic_launcher_foreground.png" || true
+
+              # Auto-generate pure white (#FFFFFF) transparent silhouette for Android status bar notifications
+              notif_dir="android/app/src/main/res/drawable-${folder}"
+              mkdir -p "$notif_dir"
+              convert /tmp/logo.png -resize "${notif_size}x${notif_size}" -alpha extract -background white -alpha shape "$notif_dir/ic_stat_notify.png" || true
             done
-            echo "Successfully generated Android adaptive and legacy launcher icons scaled at 68%!"
+            echo "Successfully generated Android launcher icons and monochrome notification icons!"
           else
             echo "Warning: Logo PNG not found, defaulting to template icons."
           fi
