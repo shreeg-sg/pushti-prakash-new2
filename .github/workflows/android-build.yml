@@ -160,16 +160,32 @@ jobs:
           ./gradlew assembleRelease
           ./gradlew bundleRelease
 
-      - name: Sign Release APK with apksigner
+            - name: Sign Release APK with apksigner
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.KEY_PASSWORD }}
         run: |
           BUILD_TOOLS_DIR=$(find $ANDROID_HOME/build-tools -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
           echo "Using Android Build Tools at: $BUILD_TOOLS_DIR"
 
-          # Generate signing keystore
-          keytool -genkey -v -keystore release.keystore \
-            -alias pushtikey -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass android123 -keypass android123 \
-            -dname "CN=PushtiPrakash, OU=Mobile, O=Pushti, L=Mumbai, S=MH, C=IN"
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KS_PASS" ]; then
+            echo "Decoding production keystore from GitHub Secrets..."
+            echo "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+            ALIAS_NAME="${KEY_ALIAS:-pushtikey}"
+            PASS_VAL="$KS_PASS"
+            KPASS_VAL="${KEY_PASS:-$KS_PASS}"
+          else
+            echo "Notice: GitHub Secrets not configured. Generating temporary keystore for testing..."
+            ALIAS_NAME="pushtikey"
+            PASS_VAL=$(openssl rand -hex 16)
+            KPASS_VAL="$PASS_VAL"
+            keytool -genkey -v -keystore release.keystore \
+              -alias "$ALIAS_NAME" -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$PASS_VAL" -keypass "$KPASS_VAL" \
+              -dname "CN=PushtiPrakash, OU=Mobile, O=Pushti, L=Mumbai, S=MH, C=IN"
+          fi
 
           # Align the unsigned APK
           $BUILD_TOOLS_DIR/zipalign -v -p 4 \
@@ -178,13 +194,18 @@ jobs:
 
           # Sign with apksigner (v1, v2, v3 schemes)
           $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore \
-            --ks-pass pass:android123 --key-pass pass:android123 \
+            --ks-key-alias "$ALIAS_NAME" \
+            --ks-pass "pass:$PASS_VAL" --key-pass "pass:$KPASS_VAL" \
             --out android/app/build/outputs/apk/release/app-release-signed.apk \
             android/app/build/outputs/apk/release/app-release-aligned.apk
+
+          # Remove keystore file immediately after signing
+          rm -f release.keystore
 
           # Verify signature
           $BUILD_TOOLS_DIR/apksigner verify -v android/app/build/outputs/apk/release/app-release-signed.apk
           echo "APK successfully signed and verified!"
+
 
       - name: Upload Installable Signed Release APK
         uses: actions/upload-artifact@v4
