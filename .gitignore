@@ -1,1 +1,34 @@
-node_modules
+# Dependencies & Build outputs
+/node_modules
+/dist
+/www
+/.angular
+/out-tsc
+
+# Native mobile build artifacts (generated in CI)
+/android/app/build
+/ios/App/build
+*.apk
+*.aab
+*.ipa
+*.xcarchive
+
+# Secrets, Credentials & Signing Keys (CRITICAL: Never commit)
+serviceAccountKey.json
+*service-account*.json
+*firebase-adminsdk*.json
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+.env
+.env.*
+
+# IDE & OS files
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.log
+
