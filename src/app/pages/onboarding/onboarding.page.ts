@@ -10,12 +10,13 @@ import {
   IonCardContent,
   IonButton,
   IonIcon,
-  IonSpinner
+  IonSpinner,
+  ToastController
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import { checkmarkCircle, arrowForwardOutline, globeOutline } from 'ionicons/icons';
-import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { Observable, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 
 import { DataService } from '../../core/services/data.service';
 import { StorageService } from '../../core/services/storage.service';
@@ -37,76 +38,77 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
     IonSpinner
   ],
   template: `
-    <ion-content class="ion-padding onboarding-bg">
-      <div class="onboarding-wrapper">
-        <!-- 1. Loading State while Remote Config Resolves on Slow Connections -->
-        <div class="onboarding-loading-box" *ngIf="isLoadingConfig && !(identity$ | async)">
-          <ion-spinner name="crescent" color="primary" class="loading-spinner"></ion-spinner>
-          <p class="loading-text">Loading preferences...</p>
+  <ion-content class="ion-padding onboarding-bg">
+    <div class="onboarding-wrapper">
+      <!-- 1. Loading State while Remote Config Resolves on Mobile -->
+      <div class="onboarding-loading-box" *ngIf="isLoadingConfig && !(identity$ | async)">
+        <ion-spinner name="crescent" color="primary" class="loading-spinner"></ion-spinner>
+        <p class="loading-text">Loading preferences...</p>
+      </div>
+
+      <!-- 2. Interactive Language Selection Card -->
+      <ion-card class="onboarding-card">
+        <!-- Logo Display -->
+        <div class="logo-stage" *ngIf="logoUrl">
+          <img [src]="dataService.resolveMediaUrl(logoUrl)" alt="App Logo" class="welcome-logo" />
         </div>
 
-        <!-- 2. Interactive Language Selection Card -->
-        <ion-card class="onboarding-card" *ngIf="(identity$ | async) || !isLoadingConfig">
-          <!-- Logo Display -->
-          <div class="logo-stage" *ngIf="(identity$ | async)?.logoUrl as logo">
-            <img [src]="dataService.resolveMediaUrl(logo)" alt="App Logo" class="welcome-logo" />
+        <!-- Welcome Header -->
+        <ion-card-header class="welcome-header">
+          <ion-card-title class="welcome-heading">
+            {{ appName }}
+          </ion-card-title>
+          <ion-card-subtitle class="welcome-subtitle">
+            <ion-icon name="globe-outline"></ion-icon>
+            <span>Please select your preferred language / कृपया अपनी भाषा चुनें</span>
+          </ion-card-subtitle>
+        </ion-card-header>
+
+        <ion-card-content>
+          <!-- Language List -->
+          <div class="language-column">
+            <button
+              type="button"
+              *ngFor="let lang of availableLanguages"
+              class="lang-option-btn"
+              [class.selected]="selectedLang === lang.code"
+              (click)="onSelectLanguage(lang.code)">
+              <span class="lang-native-name">{{ lang.name }}</span>
+              <ion-icon
+                *ngIf="selectedLang === lang.code"
+                name="checkmark-circle"
+                class="check-icon">
+              </ion-icon>
+            </button>
           </div>
 
-          <!-- Welcome Header -->
-          <ion-card-header class="welcome-header">
-            <ion-card-title class="welcome-heading">
-              {{
-                (uiText$ | async)?.['welcome_title'] ||
-                localize((identity$ | async)?.appName) ||
-                (identity$ | async)?.defaultAppName ||
-                'Welcome'
-              }}
-            </ion-card-title>
-            <ion-card-subtitle class="welcome-subtitle">
-              <ion-icon name="globe-outline"></ion-icon>
-              <span>
-                {{ (uiText$ | async)?.['select_language_prompt'] || 'Please select your preferred language' }}
-              </span>
-            </ion-card-subtitle>
-          </ion-card-header>
-
-          <ion-card-content>
-            <!-- Language List: Pulls from remote with instant local fallback -->
-            <div class="language-column">
-              <button
-                type="button"
-                *ngFor="let lang of availableLanguages"
-                class="lang-option-btn"
-                [class.selected]="selectedLang === lang.code"
-                (click)="onSelectLanguage(lang.code)">
-                <span class="lang-native-name">{{ lang.name }}</span>
-                <ion-icon
-                  *ngIf="selectedLang === lang.code"
-                  name="checkmark-circle"
-                  class="check-icon">
-                </ion-icon>
-              </button>
-            </div>
-
-            <!-- Submit & Continue Button -->
-            <ion-button
-              expand="block"
-              size="large"
-              color="primary"
-              class="continue-btn ion-margin-top"
-              [disabled]="!selectedLang"
-              (click)="onContinue()">
-              {{ (uiText$ | async)?.['continue_button'] || 'Continue' }}
-              <ion-icon slot="end" name="arrow-forward-outline"></ion-icon>
-            </ion-button>
-          </ion-card-content>
-        </ion-card>
-      </div>
-    </ion-content>
+          <!-- Submit & Continue Button -->
+          <ion-button
+            expand="block"
+            size="large"
+            color="primary"
+            class="continue-btn ion-margin-top"
+            [disabled]="!selectedLang || isSubmitting"
+            (click)="onContinue()">
+            <ion-spinner name="dots" *ngIf="isSubmitting"></ion-spinner>
+            <span *ngIf="!isSubmitting">Continue / आगे बढ़ें</span>
+            <ion-icon slot="end" name="arrow-forward-outline" *ngIf="!isSubmitting"></ion-icon>
+          </ion-button>
+        </ion-card-content>
+      </ion-card>
+    </div>
+  </ion-content>
   `,
   styles: [`
+    :host {
+      --ion-color-primary: #8B2635;
+      --ion-color-primary-rgb: 139, 38, 53;
+      --ion-color-secondary: #D4AF37;
+      --ion-background-color: #FFFDF9;
+      --ion-card-background: #FFF8EC;
+    }
     .onboarding-bg {
-      --background: var(--ion-background-color, #fffdf9);
+      --background: var(--ion-background-color, #FFFDF9);
     }
     .onboarding-wrapper {
       min-height: 100%;
@@ -136,7 +138,7 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
       border-radius: 20px;
       padding: 16px 12px;
       box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
-      background: var(--ion-card-background, #fff8ec);
+      background: var(--ion-card-background, #FFF8EC);
       border: 1px solid rgba(var(--ion-color-primary-rgb), 0.15);
       text-align: center;
     }
@@ -194,7 +196,7 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
       border-radius: 12px;
       border: 2px solid rgba(var(--ion-color-primary-rgb), 0.2);
       background: #ffffff;
-      color: var(--ion-text-color, #2c1810);
+      color: var(--ion-text-color, #2C1810);
       font-size: 1.05rem;
       font-weight: 600;
       cursor: pointer;
@@ -225,14 +227,25 @@ export class OnboardingPage implements OnInit {
   private router = inject(Router);
   public dataService = inject(DataService);
   private storageService = inject(StorageService);
+  private toastController = inject(ToastController);
 
-  public identity$: Observable<AppIdentity> = this.dataService.identity$;
-  public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
+  public identity$: Observable<AppIdentity> = this.dataService.identity$.pipe(
+    catchError(() => of({
+      defaultAppName: 'PushtiPrakash',
+      appName: { hi: 'पुष्टिप्रकाश', en: 'PushtiPrakash' },
+      logoUrl: 'images/logo.png',
+      watermarkUrl: 'images/logo.png',
+      theme: { primary: '#8B2635', secondary: '#D4AF37', tertiary: '#2E5A44', background: '#FFFDF9' }
+    } as AppIdentity))
+  );
 
   public selectedLang = 'hi';
   public isLoadingConfig = true;
+  public isSubmitting = false;
 
-  // Resilient fallback languages if remote manifest is delayed
+  public appName = 'PushtiPrakash';
+  public logoUrl: string | null = null;
+
   public availableLanguages: SupportedLanguage[] = [
     { code: 'hi', name: 'हिन्दी', ttsLocale: 'hi-IN', isEnabled: true },
     { code: 'gu', name: 'ગુજરાતી', ttsLocale: 'gu-IN', isEnabled: true },
@@ -244,23 +257,58 @@ export class OnboardingPage implements OnInit {
   }
 
   ngOnInit(): void {
-    this.selectedLang = this.storageService.getCurrentLanguageSnapshot() || 'hi';
-
-    // Hydrate enabled languages dynamically as soon as remote config emits
-    this.dataService.enabledLanguages$.subscribe(langs => {
-      if (langs && langs.length > 0) {
-        this.availableLanguages = langs;
-        if (!langs.some(l => l.code === this.selectedLang)) {
-          this.selectedLang = langs[0].code;
-        }
+    try {
+      const savedLang = this.storageService.getCurrentLanguageSnapshot();
+      if (savedLang) {
+        this.selectedLang = savedLang;
       }
-      this.isLoadingConfig = false;
+    } catch (e) {
+      console.warn('Could not read saved language snapshot:', e);
+    }
+
+    this.identity$.subscribe({
+      next: (identity) => {
+        if (identity) {
+          if (identity.appName) {
+            this.appName = typeof identity.appName === 'string' 
+              ? identity.appName 
+              : (identity.appName['hi'] || identity.appName['en'] || identity.defaultAppName || 'PushtiPrakash');
+          } else if (identity.defaultAppName) {
+            this.appName = identity.defaultAppName;
+          }
+          if (identity.logoUrl) {
+            this.logoUrl = identity.logoUrl;
+          }
+          // Correctly accessing theme properties from identity.theme
+          if (identity.theme?.primary) {
+            document.documentElement.style.setProperty('--ion-color-primary', identity.theme.primary);
+          }
+          if (identity.theme?.secondary) {
+            document.documentElement.style.setProperty('--ion-color-secondary', identity.theme.secondary);
+          }
+        }
+        this.isLoadingConfig = false;
+      },
+      error: () => {
+        this.isLoadingConfig = false;
+      }
     });
 
-    // Safety timeout: dismiss loading indicator after 2s even if offline
+    this.dataService.enabledLanguages$.subscribe({
+      next: (langs) => {
+        if (langs && langs.length > 0) {
+          this.availableLanguages = langs;
+          if (!langs.some(l => l.code === this.selectedLang)) {
+            this.selectedLang = langs[0].code;
+          }
+        }
+      },
+      error: () => {}
+    });
+
     setTimeout(() => {
       this.isLoadingConfig = false;
-    }, 2000);
+    }, 1500);
   }
 
   public onSelectLanguage(code: string): void {
@@ -268,12 +316,23 @@ export class OnboardingPage implements OnInit {
   }
 
   public async onContinue(): Promise<void> {
-    if (!this.selectedLang) return;
-    await this.storageService.completeOnboarding(this.selectedLang);
-    this.router.navigate(['/dashboard'], { replaceUrl: true });
-  }
+    if (!this.selectedLang || this.isSubmitting) return;
 
-  public localize(mapObj: Record<string, string> | undefined): string {
-    return this.dataService.localizeField(mapObj, this.selectedLang);
+    this.isSubmitting = true;
+    try {
+      await this.storageService.completeOnboarding(this.selectedLang);
+      await this.router.navigate(['/dashboard'], { replaceUrl: true });
+    } catch (err) {
+      console.error('Error completing onboarding on mobile:', err);
+      const toast = await this.toastController.create({
+        message: 'Failed to save preferences. Please try again.',
+        duration: 2500,
+        color: 'danger',
+        position: 'bottom'
+      });
+      await toast.present();
+    } finally {
+      this.isSubmitting = false;
+    }
   }
 }
