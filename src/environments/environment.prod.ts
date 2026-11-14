@@ -35,5 +35,5 @@ export const environment = {
   defaultMediaBaseUrl: PROD_PROVIDER_CONFIGS[PROD_ACTIVE_PROVIDER].mediaBaseUrl,
 
   fallbackMockPath: 'assets/mock/',
-  developerCredit: ''
+  developerCredit: 'Developed by ShreeG'
 };

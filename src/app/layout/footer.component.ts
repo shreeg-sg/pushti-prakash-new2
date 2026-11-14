@@ -41,7 +41,7 @@ export class FooterComponent {
   private dataService = inject(DataService);
 
   public readonly appVersion = environment.appVersion || '1.0.0';
-  public readonly fallbackCredit = environment.developerCredit || 'PushtiPrakash Digital Platform';
+  public readonly fallbackCredit = environment.developerCredit || 'Developed by ShreeG';
 
   // Dynamically pulls tenant footer credit from remote app_identity.json if defined
   public readonly footerCredit$: Observable<string> = this.dataService.identity$.pipe(
