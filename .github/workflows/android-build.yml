@@ -18,27 +18,27 @@ on:
       app_id:
         description: 'Android Application ID / Package Name'
         required: true
-        default: 'com.sameergujarathi.pushtiprakash'
+        default: 'com.pushtiprakash.reader'
         type: string
       firebase_config_url:
         description: 'Remote Config URL for this Client'
         required: true
-        default: 'https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets/mock/'
+        default: 'https://cdn.jsdelivr.net/gh/shreeg-sg/pushtiprakash-media@main/src/assets/mock/'
         type: string
       logo_url:
         description: 'Direct URL to Client Logo PNG (Fallback if local src/assets/images/logo.png not present)'
         required: false
-        default: 'https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets/images/logo.png'
+        default: 'https://cdn.jsdelivr.net/gh/shreeg-sg/pushtiprakash-media@main/src/assets/images/logo.png'
         type: string
       build_version:
         description: 'Semantic Version Name (e.g., 1.0.0)'
         required: true
-        default: '1.0.0'
+        default: '2026.11.0'
         type: string
       version_code:
         description: 'Google Play Integer Version Code (e.g., 1, 2, 3...)'
         required: true
-        default: '1'
+        default: '2'
         type: string
 
 jobs:
