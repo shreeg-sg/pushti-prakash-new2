@@ -209,7 +209,7 @@ jobs:
       - name: Purge jsDelivr CDN Cache
         run: |
           echo "Purging jsDelivr edge cache for all mock configuration assets..."
-          curl -s -I "https://purge.jsdelivr.net/gh/shreeg-sg/pushtiprakash-media@main/src/assets/mock/" || true
+          curl -s -I "https://purge.jsdelivr.net/gh/shreeg-sg/pushtiprakash-media@main/src/assets/" || true
           echo "jsDelivr cache purge request sent successfully!"
 
       - name: Upload Installable Signed Release APK
