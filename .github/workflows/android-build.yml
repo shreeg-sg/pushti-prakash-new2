@@ -206,6 +206,12 @@ jobs:
           $BUILD_TOOLS_DIR/apksigner verify -v android/app/build/outputs/apk/release/app-release-signed.apk
           echo "APK successfully signed and verified!"
 
+      - name: Purge jsDelivr CDN Cache
+        run: |
+          echo "Purging jsDelivr edge cache for all mock configuration assets..."
+          curl -s -I "https://purge.jsdelivr.net/gh/shreeg-sg/pushtiprakash-media@main/src/assets/mock/" || true
+          echo "jsDelivr cache purge request sent successfully!"
+
       - name: Upload Installable Signed Release APK
         uses: actions/upload-artifact@v4
         with:
