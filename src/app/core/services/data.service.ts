@@ -183,6 +183,12 @@ export class DataService implements OnDestroy {
     const cachedConfig = await this.loadCachedConfig();
     if (cachedConfig) {
       this.applyAndPublishConfig(cachedConfig);
+    } else {
+      // Immediately hydrate from bundled assets/mock/ on first launch so UI never hangs
+      const bundledConfig = await this.loadBundledFallbackConfig();
+      if (bundledConfig) {
+        this.applyAndPublishConfig(bundledConfig);
+      }
     }
 
     // Issue #22: Re-schedule notifications whenever user changes language
@@ -248,6 +254,12 @@ export class DataService implements OnDestroy {
       ]);
 
       if (!identity || typeof identity !== 'object' || !Array.isArray(books) || books.length === 0) {
+        if (!this.configSubject.value) {
+          const fallback = await this.loadBundledFallbackConfig();
+          if (fallback) {
+            this.applyAndPublishConfig(fallback);
+          }
+        }
         return { success: false, message: 'Invalid or empty remote manifest', isUpdated: false };
       }
 
@@ -275,7 +287,50 @@ export class DataService implements OnDestroy {
       return { success: true, message: 'Already up to date', isUpdated: false };
     } catch (err: any) {
       console.warn('[DataService] Remote sync failed, using cached state:', err?.message || err);
+      if (!this.configSubject.value) {
+        const fallback = await this.loadBundledFallbackConfig();
+        if (fallback) {
+          this.applyAndPublishConfig(fallback);
+        }
+      }
       return { success: false, message: err?.message || 'Remote sync failed', isUpdated: false };
+    }
+  }
+
+  private async loadBundledFallbackConfig(): Promise<AppConfig | null> {
+    try {
+      let baseDir = (environment.fallbackMockPath || 'assets/mock/').trim();
+      if (!baseDir.endsWith('/')) {
+        baseDir = `${baseDir}/`;
+      }
+
+      const [identity, languages, ui, books, banner, about, schedules] = await Promise.all([
+        firstValueFrom(this.http.get<AppIdentity>(`${baseDir}app_identity.json`).pipe(catchError(() => of(null)))),
+        firstValueFrom(this.http.get<SupportedLanguage[]>(`${baseDir}supportedLanguages.json`).pipe(catchError(() => of([])))),
+        firstValueFrom(this.http.get<UiTranslations>(`${baseDir}ui_translations.json`).pipe(catchError(() => of({})))),
+        firstValueFrom(this.http.get<Book[]>(`${baseDir}books.json`).pipe(catchError(() => of([])))),
+        firstValueFrom(this.http.get<any>(`${baseDir}updateBannerMessage.json`).pipe(catchError(() => of([])))),
+        firstValueFrom(this.http.get<AboutInfo>(`${baseDir}about_info.json`).pipe(catchError(() => of({ description: {}, feedback_links: {} })))),
+        firstValueFrom(this.http.get<NotificationSchedule[]>(`${baseDir}notification_schedules.json`).pipe(catchError(() => of([]))))
+      ]);
+
+      if (!identity || typeof identity !== 'object' || !Array.isArray(books) || books.length === 0) {
+        return null;
+      }
+
+      return {
+        schemaVersion: 1,
+        lastUpdatedIso: new Date().toISOString(),
+        app_identity: identity,
+        supportedLanguages: Array.isArray(languages) ? languages : [],
+        ui_translations: ui && typeof ui === 'object' && !Array.isArray(ui) ? (ui as UiTranslations) : {},
+        books: books,
+        updateBannerMessage: banner,
+        about_info: about,
+        notification_schedules: Array.isArray(schedules) ? schedules : []
+      };
+    } catch {
+      return null;
     }
   }
 

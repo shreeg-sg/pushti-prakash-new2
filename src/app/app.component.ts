@@ -14,13 +14,11 @@ import { NotificationService } from './core/services/notification.service';
   imports: [CommonModule, IonApp, IonRouterOutlet],
   template: `
     <ion-app>
-      <ion-router-outlet *ngIf="isAppReady"></ion-router-outlet>
+      <ion-router-outlet></ion-router-outlet>
     </ion-app>
   `
 })
 export class AppComponent implements OnInit {
-  public isAppReady = false;
-
   constructor(
     private router: Router,
     private storageService: StorageService,
@@ -30,22 +28,21 @@ export class AppComponent implements OnInit {
   ) {}
 
   async ngOnInit(): Promise<void> {
-    // 1. Hydrate local preferences in 0ms (synchronous from memory/storage)
+    // 1. Hydrate local preferences
     await this.storageService.initialize();
 
-    // 2. Register native listeners
+    // 2. Register native listeners non-blockingly so router outlet never misses initial navigation
     this.backButtonService.initialize();
-    await this.notificationService.initialize();
+    this.notificationService.initialize().catch(err => {
+      console.warn('[AppComponent] Notification init deferred:', err);
+    });
 
-    // 3. Mount router-outlet immediately so cold boot has 0ms visual latency
-    this.isAppReady = true;
-
-    // 4. Check onboarding status from disk cache
+    // 3. Check onboarding status from disk cache
     if (!this.storageService.hasCompletedOnboardingSnapshot()) {
       await this.router.navigate(['/onboarding'], { replaceUrl: true });
     }
 
-    // 5. Asynchronously trigger daily remote sync without blocking UI startup
+    // 4. Hydrate cached/bundled config and asynchronously trigger daily remote sync
     this.dataService.initialize().catch(err => {
       console.warn('[AppComponent] Background remote sync deferred:', err);
     });

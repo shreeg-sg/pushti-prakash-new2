@@ -25,25 +25,9 @@ import { SidebarComponent } from './sidebar.component';
         <app-sidebar class="ion-page"></app-sidebar>
       </ion-menu>
 
-      <!-- Main Viewport: Clean full-height (Footer moved to sidebar) -->
-      <div class="ion-page shell-main-viewport" id="main-content">
-        <div class="shell-router-container">
-          <ion-router-outlet></ion-router-outlet>
-        </div>
-      </div>
+      <!-- Main Viewport: Direct IonRouterOutlet child for Ionic 8 StackController -->
+      <ion-router-outlet id="main-content"></ion-router-outlet>
     </ion-split-pane>
-  `,
-  styles: [`
-    .shell-main-viewport {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-    }
-    .shell-router-container {
-      flex: 1;
-      position: relative;
-      overflow: hidden;
-    }
-  `]
+  `
 })
 export class ShellComponent {}
