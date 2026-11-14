@@ -160,7 +160,7 @@ jobs:
           ./gradlew assembleRelease
           ./gradlew bundleRelease
 
-            - name: Sign Release APK with apksigner
+      - name: Sign Release APK with apksigner
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -205,7 +205,6 @@ jobs:
           # Verify signature
           $BUILD_TOOLS_DIR/apksigner verify -v android/app/build/outputs/apk/release/app-release-signed.apk
           echo "APK successfully signed and verified!"
-
 
       - name: Upload Installable Signed Release APK
         uses: actions/upload-artifact@v4
