@@ -31,7 +31,7 @@ export class AppComponent implements OnInit {
     // 1. Hydrate local preferences
     await this.storageService.initialize();
 
-    // 2. Register native listeners non-blockingly so router outlet never misses initial navigation
+    // 2. Register native listeners non-blockingly
     this.backButtonService.initialize();
     this.notificationService.initialize().catch(err => {
       console.warn('[AppComponent] Notification init deferred:', err);
@@ -42,7 +42,7 @@ export class AppComponent implements OnInit {
       await this.router.navigate(['/onboarding'], { replaceUrl: true });
     }
 
-    // 4. Hydrate cached/bundled config and asynchronously trigger daily remote sync
+    // 4. Asynchronously trigger daily remote sync without blocking UI startup
     this.dataService.initialize().catch(err => {
       console.warn('[AppComponent] Background remote sync deferred:', err);
     });

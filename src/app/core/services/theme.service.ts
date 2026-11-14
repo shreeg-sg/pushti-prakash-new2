@@ -35,6 +35,9 @@ export class ThemeService {
     this.setIonicColorVariable(root, 'secondary', safeSecondary);
     this.setIonicColorVariable(root, 'tertiary', safeTertiary);
 
+    root.style.setProperty('--ion-toolbar-background', safePrimary);
+    root.style.setProperty('--ion-toolbar-color', this.getContrastHex(safePrimary));
+
     if (theme.background) {
       const safeBg = SecurityUtil.sanitizeHexColor(theme.background, '#FFFDF9');
       const bgRgb = this.hexToRgbString(safeBg);
@@ -43,13 +46,9 @@ export class ThemeService {
       root.style.setProperty('--app-background-color', safeBg);
     }
 
-    if (theme.surface) {
-      const safeSurface = SecurityUtil.sanitizeHexColor(theme.surface, '#FFF8EC');
-      root.style.setProperty('--ion-card-background', safeSurface);
-      root.style.setProperty('--ion-item-background', safeSurface);
-      root.style.setProperty('--ion-toolbar-background', safePrimary);
-      root.style.setProperty('--ion-toolbar-color', this.getContrastHex(safePrimary));
-    }
+    const safeSurface = SecurityUtil.sanitizeHexColor(theme.surface, '#FFF8EC');
+    root.style.setProperty('--ion-card-background', safeSurface);
+    root.style.setProperty('--ion-item-background', safeSurface);
 
     if (theme.textPrimary) {
       const safeText = SecurityUtil.sanitizeHexColor(theme.textPrimary, '#2C1810');

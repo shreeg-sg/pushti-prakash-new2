@@ -25,7 +25,7 @@ import { SidebarComponent } from './sidebar.component';
         <app-sidebar class="ion-page"></app-sidebar>
       </ion-menu>
 
-      <!-- Main Viewport: Direct IonRouterOutlet child for Ionic 8 StackController -->
+      <!-- Main Viewport -->
       <ion-router-outlet id="main-content"></ion-router-outlet>
     </ion-split-pane>
   `

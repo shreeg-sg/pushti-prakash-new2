@@ -184,14 +184,12 @@ export class DataService implements OnDestroy {
     if (cachedConfig) {
       this.applyAndPublishConfig(cachedConfig);
     } else {
-      // Immediately hydrate from bundled assets/mock/ on first launch so UI never hangs
       const bundledConfig = await this.loadBundledFallbackConfig();
       if (bundledConfig) {
         this.applyAndPublishConfig(bundledConfig);
       }
     }
 
-    // Issue #22: Re-schedule notifications whenever user changes language
     this.langNotifySub = this.storageService.selectedLanguage$
       .pipe(distinctUntilChanged())
       .subscribe(lang => {
@@ -337,7 +335,6 @@ export class DataService implements OnDestroy {
   public async loadChapterContent(bookId: string, chapter: Chapter): Promise<ChapterLoadedContent> {
     const cacheKey = `${this.CHAPTER_CACHE_PREFIX}${bookId}_${chapter.id}`;
 
-    // Issue #14: Return cached chapter even if images array is empty
     if (this.chapterContentCache.has(cacheKey)) {
       const cached = this.chapterContentCache.get(cacheKey)!;
       if (Object.keys(cached.transcript).length > 0) {
