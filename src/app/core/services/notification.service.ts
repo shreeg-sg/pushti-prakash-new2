@@ -1,6 +1,7 @@
 import { Injectable, NgZone, OnDestroy, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Capacitor, PluginListenerHandle } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import {
   LocalNotifications,
   LocalNotificationSchema,
@@ -20,8 +21,9 @@ export class NotificationService implements OnDestroy {
 
   private actionListener?: PluginListenerHandle;
   private isInitialized = false;
-
   private initPromise?: Promise<void>;
+  private cachedLogoUri: string | null = null;
+  private lastLogoSourceUrl = '';
 
   public initialize(): Promise<void> {
     if (!Capacitor.isNativePlatform()) return Promise.resolve();
@@ -52,9 +54,49 @@ export class NotificationService implements OnDestroy {
     return this.initPromise;
   }
 
+  /**
+   * Downloads the remote logoUrl from app_identity.json to local cache
+   * so Android LocalNotifications can render the exact same logo image.
+   */
+  private async resolveLocalLogoUri(remoteLogoUrl?: string): Promise<string> {
+    if (!remoteLogoUrl || !Capacitor.isNativePlatform()) {
+      return 'ic_notify_large';
+    }
+
+    if (this.cachedLogoUri && this.lastLogoSourceUrl === remoteLogoUrl) {
+      return this.cachedLogoUri;
+    }
+
+    const filePath = 'notif_logo/app_logo.png';
+    try {
+      const dl = await Filesystem.downloadFile({
+        path: filePath,
+        directory: Directory.Cache,
+        url: remoteLogoUrl,
+        recursive: true
+      });
+      if (dl?.path) {
+        this.cachedLogoUri = dl.path;
+        this.lastLogoSourceUrl = remoteLogoUrl;
+        return dl.path;
+      }
+    } catch {
+      try {
+        const stat = await Filesystem.stat({ path: filePath, directory: Directory.Cache });
+        if (stat?.uri) {
+          this.cachedLogoUri = stat.uri;
+          return stat.uri;
+        }
+      } catch {}
+    }
+
+    return 'ic_notify_large';
+  }
+
   public async rescheduleNotifications(
     schedules: NotificationSchedule[],
-    langCode: string
+    langCode: string,
+    logoUrl?: string
   ): Promise<void> {
     if (!Capacitor.isNativePlatform()) return;
 
@@ -75,13 +117,16 @@ export class NotificationService implements OnDestroy {
       const activeSchedules = (schedules || []).filter(item => item.isEnabled);
       if (activeSchedules.length === 0) return;
 
+      // Resolve the logo from the exact same URL used by the application
+      const resolvedLargeIcon = await this.resolveLocalLogoUri(logoUrl);
+
       const now = Date.now();
       const notificationsToSchedule: LocalNotificationSchema[] = [];
 
       for (const item of activeSchedules) {
         const iconConfig = {
           smallIcon: 'ic_stat_notify',
-          largeIcon: 'ic_launcher',
+          largeIcon: resolvedLargeIcon,
           iconColor: '#8B2635'
         };
 

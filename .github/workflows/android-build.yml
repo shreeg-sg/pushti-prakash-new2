@@ -143,16 +143,23 @@ jobs:
               convert /tmp/logo.png -resize "${icon_size}x${icon_size}" -gravity center -background none -extent "${size}x${size}" "$dir/ic_launcher_round.png" || true
               convert /tmp/logo.png -resize "${icon_size}x${icon_size}" -gravity center -background none -extent "${size}x${size}" "$dir/ic_launcher_foreground.png" || true
 
-              # Auto-generate pure white (#FFFFFF) transparent silhouette for Android status bar notifications
               notif_dir="android/app/src/main/res/drawable-${folder}"
               mkdir -p "$notif_dir"
-              convert /tmp/logo.png -resize "${notif_size}x${notif_size}" -alpha extract -background white -alpha shape "$notif_dir/ic_stat_notify.png" || true
+
+              # 1. Full-color fallback drawable in res/drawable-*
+              convert /tmp/logo.png -resize "${size}x${size}" -gravity center -background none -extent "${size}x${size}" "$notif_dir/ic_notify_large.png" || true
+
+              # 2. Extract dark inner artwork as white silhouette on transparent background (fixes hollow white circle)
+              convert /tmp/logo.png -resize "${notif_size}x${notif_size}" \
+                -background white -alpha remove -alpha off \
+                -colorspace Gray -negate -threshold 35% \
+                -background white -alpha shape "$notif_dir/ic_stat_notify.png" || true
             done
-            echo "Successfully generated Android launcher icons and monochrome notification icons!"
+            echo "Successfully generated Android launcher icons and notification icons!"
           else
             echo "Warning: Logo PNG not found, defaulting to template icons."
           fi
-
+          
       - name: Build Android Release APK and Android App Bundle (AAB)
         run: |
           cd android

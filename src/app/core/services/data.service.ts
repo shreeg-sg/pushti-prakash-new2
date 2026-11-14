@@ -187,13 +187,14 @@ export class DataService implements OnDestroy {
 
     // Issue #22: Re-schedule notifications whenever user changes language
     this.langNotifySub = this.storageService.selectedLanguage$
-      .pipe(distinctUntilChanged())
-      .subscribe(lang => {
-        const schedules = this.configSubject.value?.notification_schedules;
-        if (schedules) {
-          this.notificationService.rescheduleNotifications(schedules, lang).catch(() => {});
-        }
-      });
+    .pipe(distinctUntilChanged())
+    .subscribe(lang => {
+      const cfg = this.configSubject.value;
+      if (cfg?.notification_schedules) {
+        const logoUrl = this.resolveMediaUrl(cfg.app_identity?.logoUrl);
+        this.notificationService.rescheduleNotifications(cfg.notification_schedules, lang, logoUrl).catch(() => {});
+      }
+    });
 
     await this.syncIfDueToday();
 
@@ -408,7 +409,8 @@ export class DataService implements OnDestroy {
 
     const lang = this.storageService.getCurrentLanguageSnapshot();
     if (config.notification_schedules) {
-      this.notificationService.rescheduleNotifications(config.notification_schedules, lang).catch(() => {});
+      const logoUrl = this.resolveMediaUrl(config.app_identity?.logoUrl);
+      this.notificationService.rescheduleNotifications(config.notification_schedules, lang, logoUrl).catch(() => {});
     }
   }
 
