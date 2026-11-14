@@ -33,7 +33,7 @@ on:
       build_version:
         description: 'Semantic App Version (e.g., 1.0.0)'
         required: true
-        default: '1.0.0'
+        default: '2026.11.04'
         type: string
       version_code:
         description: 'Apple Build Number / CFBundleVersion (e.g., 1, 2, 3...)'

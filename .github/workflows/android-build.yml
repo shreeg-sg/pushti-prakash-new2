@@ -18,27 +18,27 @@ on:
       app_id:
         description: 'Android Application ID / Package Name'
         required: true
-        default: 'com.sameergujarathi.pushtiprakash'
+        default: 'com.pushtiprakash.reader'
         type: string
       firebase_config_url:
         description: 'Remote Config URL for this Client'
         required: true
-        default: 'https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets/mock/'
+        default: 'https://cdn.jsdelivr.net/gh/shreeg-sg/pushtiprakash-media@main/src/assets/mock/'
         type: string
       logo_url:
         description: 'Direct URL to Client Logo PNG (Fallback if local src/assets/images/logo.png not present)'
         required: false
-        default: 'https://raw.githubusercontent.com/shreeg-sg/pushtiprakash-media/main/src/assets/images/logo.png'
+        default: 'https://cdn.jsdelivr.net/gh/shreeg-sg/pushtiprakash-media@main/src/assets/images/logo.png'
         type: string
       build_version:
-        description: 'Semantic Version Name (e.g., 1.0.0)'
+        description: 'Semantic Version Name (e.g., 2026.11.14)'
         required: true
-        default: '1.0.0'
+        default: '2026.11.14'
         type: string
       version_code:
-        description: 'Google Play Integer Version Code (e.g., 1, 2, 3...)'
+        description: 'Google Play Integer Version Code (must be higher than previous upload)'
         required: true
-        default: '1'
+        default: '2'
         type: string
 
 jobs:
@@ -159,7 +159,7 @@ jobs:
           else
             echo "Warning: Logo PNG not found, defaulting to template icons."
           fi
-          
+
       - name: Build Android Release APK and Android App Bundle (AAB)
         run: |
           cd android
@@ -167,31 +167,61 @@ jobs:
           ./gradlew assembleRelease
           ./gradlew bundleRelease
 
-      - name: Sign Release APK with apksigner
+      - name: Sign Release APK and Play Store AAB
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.KEY_PASSWORD }}
         run: |
           BUILD_TOOLS_DIR=$(find $ANDROID_HOME/build-tools -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
           echo "Using Android Build Tools at: $BUILD_TOOLS_DIR"
 
-          # Generate signing keystore
-          keytool -genkey -v -keystore release.keystore \
-            -alias pushtikey -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass android123 -keypass android123 \
-            -dname "CN=PushtiPrakash, OU=Mobile, O=Pushti, L=Mumbai, S=MH, C=IN"
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KS_PASS" ]; then
+            echo "Decoding permanent upload keystore from GitHub Secrets..."
+            echo "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+            ALIAS_NAME="${KEY_ALIAS:-pushtikey}"
+            PASS_VAL="$KS_PASS"
+            KPASS_VAL="${KEY_PASS:-$KS_PASS}"
+          else
+            echo "Warning: GitHub Secrets not set. Generating temporary keystore (Play Store updates require permanent secrets)..."
+            ALIAS_NAME="pushtikey"
+            PASS_VAL=$(openssl rand -hex 16)
+            KPASS_VAL="$PASS_VAL"
+            keytool -genkey -v -keystore release.keystore \
+              -alias "$ALIAS_NAME" -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$PASS_VAL" -keypass "$KPASS_VAL" \
+              -dname "CN=PushtiPrakash, OU=Mobile, O=Pushti, L=Mumbai, S=MH, C=IN"
+          fi
 
-          # Align the unsigned APK
+          # 1. Align and sign Release APK
           $BUILD_TOOLS_DIR/zipalign -v -p 4 \
             android/app/build/outputs/apk/release/app-release-unsigned.apk \
             android/app/build/outputs/apk/release/app-release-aligned.apk
 
-          # Sign with apksigner (v1, v2, v3 schemes)
           $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore \
-            --ks-pass pass:android123 --key-pass pass:android123 \
+            --ks-key-alias "$ALIAS_NAME" \
+            --ks-pass "pass:$PASS_VAL" --key-pass "pass:$KPASS_VAL" \
             --out android/app/build/outputs/apk/release/app-release-signed.apk \
             android/app/build/outputs/apk/release/app-release-aligned.apk
 
-          # Verify signature
           $BUILD_TOOLS_DIR/apksigner verify -v android/app/build/outputs/apk/release/app-release-signed.apk
-          echo "APK successfully signed and verified!"
+
+          # 2. Sign Play Store AAB with jarsigner
+          cp android/app/build/outputs/bundle/release/app-release.aab \
+            android/app/build/outputs/bundle/release/app-release-signed.aab
+
+          jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+            -keystore release.keystore \
+            -storepass "$PASS_VAL" -keypass "$KPASS_VAL" \
+            android/app/build/outputs/bundle/release/app-release-signed.aab \
+            "$ALIAS_NAME"
+
+          jarsigner -verify android/app/build/outputs/bundle/release/app-release-signed.aab
+
+          # Delete keystore from runner disk immediately
+          rm -f release.keystore
+          echo "APK and Play Store AAB successfully signed and verified!"
 
       - name: Upload Installable Signed Release APK
         uses: actions/upload-artifact@v4
@@ -200,9 +230,9 @@ jobs:
           path: android/app/build/outputs/apk/release/app-release-signed.apk
           retention-days: 14
 
-      - name: Upload Unsigned Google Play AAB
+      - name: Upload Signed Google Play AAB
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.client_key }}-release-aab-v${{ inputs.build_version }}
-          path: android/app/build/outputs/bundle/release/app-release.aab
+          name: ${{ inputs.client_key }}-signed-aab-v${{ inputs.build_version }}
+          path: android/app/build/outputs/bundle/release/app-release-signed.aab
           retention-days: 14
