@@ -1,5 +1,5 @@
 import { Injectable, NgZone, OnDestroy, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable, Subscription, combineLatest, firstValueFrom, of } from 'rxjs';
 import { map, filter, catchError, distinctUntilChanged } from 'rxjs/operators';
 import { App, AppState } from '@capacitor/app';
@@ -34,6 +34,7 @@ export interface ActiveBannerView {
 export interface ChapterLoadedContent {
   transcript: Record<string, string>;
   images: string[];
+  cachedDate?: string;
 }
 
 @Injectable({
@@ -81,7 +82,6 @@ export class DataService implements OnDestroy {
     if (!bannerData) return [];
 
     const today = this.getLocalDateString();
-
     const rawEligibleItems: any[] = [];
 
     if (Array.isArray(bannerData)) {
@@ -193,9 +193,10 @@ export class DataService implements OnDestroy {
     this.langNotifySub = this.storageService.selectedLanguage$
       .pipe(distinctUntilChanged())
       .subscribe(lang => {
-        const schedules = this.configSubject.value?.notification_schedules;
-        if (schedules) {
-          this.notificationService.rescheduleNotifications(schedules, lang).catch(() => {});
+        const cfg = this.configSubject.value;
+        if (cfg?.notification_schedules) {
+          const primaryColor = cfg.app_identity?.theme?.primary || '#8B2635';
+          this.notificationService.rescheduleNotifications(cfg.notification_schedules, lang, primaryColor).catch(() => {});
         }
       });
 
@@ -238,17 +239,40 @@ export class DataService implements OnDestroy {
         baseDir = `${baseDir}/`;
       }
 
+      const manifestFiles = [
+        'app_identity.json',
+        'supportedLanguages.json',
+        'ui_translations.json',
+        'books.json',
+        'updateBannerMessage.json',
+        'about_info.json',
+        'notification_schedules.json'
+      ];
+
+      // When user explicitly pulls down to refresh on jsDelivr, purge edge cache for manifest files
+      if (forceRefresh && baseDir.includes('cdn.jsdelivr.net/gh/')) {
+        const purgeBase = baseDir.replace('https://cdn.jsdelivr.net/gh/', 'https://purge.jsdelivr.net/gh/');
+        await Promise.all(
+          manifestFiles.map(file =>
+            fetch(`${purgeBase}${file}`, { method: 'GET', mode: 'cors' }).catch(() => null)
+          )
+        );
+      }
+
       const dailyKey = this.getLocalDateString();
       const cb = forceRefresh ? `_cb=${Date.now()}` : `_v=${dailyKey}`;
+      const httpOptions = forceRefresh
+        ? { headers: new HttpHeaders({ 'Cache-Control': 'no-cache', Pragma: 'no-cache' }) }
+        : {};
 
       const [identity, languages, ui, books, banner, about, schedules] = await Promise.all([
-        firstValueFrom(this.http.get<AppIdentity>(`${baseDir}app_identity.json?${cb}`).pipe(catchError(() => of(null)))),
-        firstValueFrom(this.http.get<SupportedLanguage[]>(`${baseDir}supportedLanguages.json?${cb}`).pipe(catchError(() => of([])))),
-        firstValueFrom(this.http.get<UiTranslations>(`${baseDir}ui_translations.json?${cb}`).pipe(catchError(() => of({})))),
-        firstValueFrom(this.http.get<Book[]>(`${baseDir}books.json?${cb}`).pipe(catchError(() => of([])))),
-        firstValueFrom(this.http.get<any>(`${baseDir}updateBannerMessage.json?${cb}`).pipe(catchError(() => of([])))),
-        firstValueFrom(this.http.get<AboutInfo>(`${baseDir}about_info.json?${cb}`).pipe(catchError(() => of({ description: {}, feedback_links: {} })))),
-        firstValueFrom(this.http.get<NotificationSchedule[]>(`${baseDir}notification_schedules.json?${cb}`).pipe(catchError(() => of([]))))
+        firstValueFrom(this.http.get<AppIdentity>(`${baseDir}app_identity.json?${cb}`, httpOptions).pipe(catchError(() => of(null)))),
+        firstValueFrom(this.http.get<SupportedLanguage[]>(`${baseDir}supportedLanguages.json?${cb}`, httpOptions).pipe(catchError(() => of([])))),
+        firstValueFrom(this.http.get<UiTranslations>(`${baseDir}ui_translations.json?${cb}`, httpOptions).pipe(catchError(() => of({})))),
+        firstValueFrom(this.http.get<Book[]>(`${baseDir}books.json?${cb}`, httpOptions).pipe(catchError(() => of([])))),
+        firstValueFrom(this.http.get<any>(`${baseDir}updateBannerMessage.json?${cb}`, httpOptions).pipe(catchError(() => of([])))),
+        firstValueFrom(this.http.get<AboutInfo>(`${baseDir}about_info.json?${cb}`, httpOptions).pipe(catchError(() => of({ description: {}, feedback_links: {} })))),
+        firstValueFrom(this.http.get<NotificationSchedule[]>(`${baseDir}notification_schedules.json?${cb}`, httpOptions).pipe(catchError(() => of([]))))
       ]);
 
       if (!identity || typeof identity !== 'object' || !Array.isArray(books) || books.length === 0) {
@@ -263,7 +287,7 @@ export class DataService implements OnDestroy {
 
       const constructedConfig: AppConfig = {
         schemaVersion: 1,
-        lastUpdatedIso: new Date().toISOString(),
+        lastUpdatedIso: this.getLocalDateString(),
         app_identity: identity,
         supportedLanguages: Array.isArray(languages) ? languages : [],
         ui_translations: ui && typeof ui === 'object' && !Array.isArray(ui) ? (ui as UiTranslations) : {},
@@ -275,9 +299,13 @@ export class DataService implements OnDestroy {
 
       const isUpdated = this.hasConfigChanged(this.configSubject.value, constructedConfig);
 
-      if (isUpdated || !this.configSubject.value) {
+      if (forceRefresh || isUpdated || !this.configSubject.value) {
         this.chapterContentCache.clear();
+        if (forceRefresh || isUpdated) {
+          await this.clearDiskChapterCache();
+        }
         await this.saveCachedConfig(constructedConfig);
+        await Preferences.set({ key: this.LAST_DAILY_SYNC_KEY, value: dailyKey });
         this.applyAndPublishConfig(constructedConfig);
         return { success: true, message: 'Updated from remote', isUpdated: true };
       }
@@ -293,6 +321,14 @@ export class DataService implements OnDestroy {
       }
       return { success: false, message: err?.message || 'Remote sync failed', isUpdated: false };
     }
+  }
+
+  private async clearDiskChapterCache(): Promise<void> {
+    try {
+      const { keys } = await Preferences.keys();
+      const chapterKeys = (keys || []).filter(k => k.startsWith(this.CHAPTER_CACHE_PREFIX));
+      await Promise.all(chapterKeys.map(key => Preferences.remove({ key })));
+    } catch {}
   }
 
   private async loadBundledFallbackConfig(): Promise<AppConfig | null> {
@@ -318,7 +354,7 @@ export class DataService implements OnDestroy {
 
       return {
         schemaVersion: 1,
-        lastUpdatedIso: new Date().toISOString(),
+        lastUpdatedIso: this.getLocalDateString(),
         app_identity: identity,
         supportedLanguages: Array.isArray(languages) ? languages : [],
         ui_translations: ui && typeof ui === 'object' && !Array.isArray(ui) ? (ui as UiTranslations) : {},
@@ -332,16 +368,18 @@ export class DataService implements OnDestroy {
     }
   }
 
-  public async loadChapterContent(bookId: string, chapter: Chapter): Promise<ChapterLoadedContent> {
+  public async loadChapterContent(bookId: string, chapter: Chapter, forceRefresh = false): Promise<ChapterLoadedContent> {
     const cacheKey = `${this.CHAPTER_CACHE_PREFIX}${bookId}_${chapter.id}`;
+    const dailyKey = this.getLocalDateString();
 
-    if (this.chapterContentCache.has(cacheKey)) {
+    if (!forceRefresh && this.chapterContentCache.has(cacheKey)) {
       const cached = this.chapterContentCache.get(cacheKey)!;
-      if (Object.keys(cached.transcript).length > 0) {
+      if (Object.keys(cached.transcript).length > 0 && cached.cachedDate === dailyKey) {
         return cached;
       }
     }
 
+    let diskFallback: ChapterLoadedContent | null = null;
     try {
       const { value } = await Preferences.get({ key: cacheKey });
       if (value) {
@@ -350,9 +388,11 @@ export class DataService implements OnDestroy {
           const transcript = parsed.transcript || (parsed.hi || parsed.gu || parsed.en ? parsed : {});
           if (Object.keys(transcript).length > 0) {
             const images = Array.isArray(parsed.images) ? parsed.images : (chapter.images || []);
-            const result: ChapterLoadedContent = { transcript, images };
-            this.chapterContentCache.set(cacheKey, result);
-            return result;
+            diskFallback = { transcript, images, cachedDate: parsed.cachedDate };
+            if (!forceRefresh && parsed.cachedDate === dailyKey) {
+              this.chapterContentCache.set(cacheKey, diskFallback);
+              return diskFallback;
+            }
           }
         }
       }
@@ -365,13 +405,17 @@ export class DataService implements OnDestroy {
 
     const targetUrl = this.resolveMediaUrl(relativePath);
     if (!targetUrl) {
-      return { transcript: {}, images: chapter.images || [] };
+      return diskFallback || { transcript: {}, images: chapter.images || [] };
     }
 
-    const dailyKey = this.getLocalDateString();
-
     try {
-      const res = await firstValueFrom(this.http.get<any>(`${targetUrl}?_v=${dailyKey}`));
+      if (forceRefresh && targetUrl.includes('cdn.jsdelivr.net/gh/')) {
+        const purgeUrl = targetUrl.replace('https://cdn.jsdelivr.net/gh/', 'https://purge.jsdelivr.net/gh/');
+        await fetch(purgeUrl, { method: 'GET', mode: 'cors' }).catch(() => null);
+      }
+
+      const cb = forceRefresh ? `_cb=${Date.now()}` : `_v=${dailyKey}`;
+      const res = await firstValueFrom(this.http.get<any>(`${targetUrl}?${cb}`));
       const transcriptMap = res?.transcript || (res && (res.hi || res.gu || res.en) ? res : {});
 
       let imagesList: string[] = [];
@@ -385,7 +429,8 @@ export class DataService implements OnDestroy {
 
       const contentPayload: ChapterLoadedContent = {
         transcript: transcriptMap,
-        images: imagesList
+        images: imagesList,
+        cachedDate: dailyKey
       };
 
       if (Object.keys(transcriptMap).length > 0) {
@@ -397,10 +442,14 @@ export class DataService implements OnDestroy {
         return contentPayload;
       }
     } catch (err) {
-      console.warn(`[DataService] Failed loading chapter from strict path: ${targetUrl}`, err);
+      console.warn(`[DataService] Failed loading chapter from remote (${targetUrl}), using offline cache if available.`);
+      if (diskFallback) {
+        this.chapterContentCache.set(cacheKey, diskFallback);
+        return diskFallback;
+      }
     }
 
-    return { transcript: {}, images: chapter.images || [] };
+    return diskFallback || { transcript: {}, images: chapter.images || [] };
   }
 
   public async loadChapterTranscript(bookId: string, chapter: Chapter): Promise<Record<string, string>> {
@@ -416,25 +465,46 @@ export class DataService implements OnDestroy {
       return '';
     }
 
-    if (clean.startsWith('https://') || clean.startsWith('data:image/')) {
+    if (clean.startsWith('data:image/')) {
       return clean;
     }
 
-    if (clean.startsWith('http://')) {
-      return clean.replace(/^http:\/\//i, 'https://');
+    if (clean.startsWith('https://') || clean.startsWith('http://')) {
+      const httpsUrl = clean.replace(/^http:\/\//i, 'https://');
+      return SecurityUtil.sanitizeCssUrl(this.normalizeToActiveCdn(httpsUrl));
     }
 
-    const baseUrl =
+    const rawBaseUrl =
       this.configSubject.value?.app_identity?.mediaBaseUrl ||
       environment.defaultMediaBaseUrl ||
       environment.firebaseConfigUrl;
 
-    if (!baseUrl) return clean;
+    if (!rawBaseUrl) return SecurityUtil.sanitizeCssUrl(clean);
 
-    const base = baseUrl.replace(/\/+$/, '').replace(/^http:\/\//i, 'https://');
+    const base = this.normalizeToActiveCdn(
+      rawBaseUrl.replace(/\/+$/, '').replace(/^http:\/\//i, 'https://')
+    );
     const path = clean.replace(/^\/+/, '');
 
-    return `${base}/${path}`;
+    return SecurityUtil.sanitizeCssUrl(`${base}/${path}`);
+  }
+
+  /**
+   * Automatically upgrades raw.githubusercontent.com URLs to cdn.jsdelivr.net
+   * when activeProvider is 'jsdelivr' to avoid GitHub's 60 req/hr rate limit.
+   */
+  private normalizeToActiveCdn(url: string): string {
+    if (environment.activeProvider === 'jsdelivr' && url.startsWith('https://raw.githubusercontent.com/')) {
+      const parts = url.replace('https://raw.githubusercontent.com/', '').split('/');
+      if (parts.length >= 3) {
+        const user = parts[0];
+        const repo = parts[1];
+        const branch = parts[2];
+        const rest = parts.slice(3).join('/');
+        return `https://cdn.jsdelivr.net/gh/${user}/${repo}@${branch}${rest ? '/' + rest : ''}`;
+      }
+    }
+    return url;
   }
 
   public localizeField(mapObj: Record<string, string> | undefined, lang: string): string {
@@ -460,7 +530,10 @@ export class DataService implements OnDestroy {
 
     const lang = this.storageService.getCurrentLanguageSnapshot();
     if (config.notification_schedules) {
-      this.notificationService.rescheduleNotifications(config.notification_schedules, lang).catch(() => {});
+      const primaryColor = config.app_identity?.theme?.primary || '#8B2635';
+      this.notificationService
+        .rescheduleNotifications(config.notification_schedules, lang, primaryColor)
+        .catch(() => {});
     }
   }
 
@@ -485,7 +558,8 @@ export class DataService implements OnDestroy {
 
   private hasConfigChanged(oldCfg: AppConfig | null, newCfg: AppConfig): boolean {
     if (!oldCfg) return true;
-    return JSON.stringify(oldCfg) !== JSON.stringify(newCfg);
+    const stripIso = (c: AppConfig) => ({ ...c, lastUpdatedIso: '' });
+    return JSON.stringify(stripIso(oldCfg)) !== JSON.stringify(stripIso(newCfg));
   }
 
   private getLocalDateString(dateObj: Date = new Date()): string {

@@ -22,18 +22,21 @@ const PROD_PROVIDER_CONFIGS: Record<StorageProvider, { configUrl: string; mediaB
   }
 };
 
+const resolvedConfigUrl = '__FIREBASE_CONFIG_URL__'.startsWith('__')
+  ? PROD_PROVIDER_CONFIGS[PROD_ACTIVE_PROVIDER].configUrl
+  : '__FIREBASE_CONFIG_URL__';
+
+const resolvedMediaBaseUrl = '__FIREBASE_CONFIG_URL__'.startsWith('__')
+  ? PROD_PROVIDER_CONFIGS[PROD_ACTIVE_PROVIDER].mediaBaseUrl
+  : resolvedConfigUrl.replace(/\/+$/, '').replace(/\/mock$/, '');
+
 export const environment = {
   production: true,
   appVersion: '__BUILD_VERSION__',
   clientKey: '__CLIENT_KEY__',
   activeProvider: PROD_ACTIVE_PROVIDER,
-
-  firebaseConfigUrl: '__FIREBASE_CONFIG_URL__'.startsWith('__')
-    ? PROD_PROVIDER_CONFIGS[PROD_ACTIVE_PROVIDER].configUrl
-    : '__FIREBASE_CONFIG_URL__',
-
-  defaultMediaBaseUrl: PROD_PROVIDER_CONFIGS[PROD_ACTIVE_PROVIDER].mediaBaseUrl,
-
+  firebaseConfigUrl: resolvedConfigUrl,
+  defaultMediaBaseUrl: resolvedMediaBaseUrl,
   fallbackMockPath: 'assets/mock/',
   developerCredit: 'Developed by ShreeG'
 };

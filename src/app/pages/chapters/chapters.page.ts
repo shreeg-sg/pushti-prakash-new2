@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   IonContent,
+  IonRefresher,
+  IonRefresherContent,
   IonList,
   IonItem,
   IonLabel,
@@ -33,6 +35,8 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     CommonModule,
     HeaderComponent,
     IonContent,
+    IonRefresher,
+    IonRefresherContent,
     IonList,
     IonItem,
     IonLabel,
@@ -50,11 +54,15 @@ import { Book, Chapter } from '../../core/models/app-config.model';
         aria-hidden="true">
       </div>
 
+      <ion-refresher slot="fixed" (ionRefresh)="onPullRefresh($event)">
+        <ion-refresher-content></ion-refresher-content>
+      </ion-refresher>
+
       <div class="chapters-wrapper" *ngIf="activeBook">
         <!-- Title & Subtitle Card -->
         <div
           class="book-banner-card"
-          [style.--cover-watermark]="'url(' + getCoverWatermarkUrl(activeBook) + ')'">
+          [style.--cover-watermark]="getCoverWatermarkUrl(activeBook) ? 'url(' + getCoverWatermarkUrl(activeBook) + ')' : 'none'">
           <div class="banner-watermark-overlay" aria-hidden="true"></div>
 
           <div class="banner-content">
@@ -96,14 +104,13 @@ import { Book, Chapter } from '../../core/models/app-config.model';
             </div>
 
             <ion-label class="ion-text-wrap chapter-title-label">
-            <h2 class="chapter-primary-title">{{ localize(chapter.title) }}</h2>
-            <p *ngIf="chapter.subtitle" class="chapter-subtitle-text">{{ localize(chapter.subtitle) }}</p>
-            <!-- Audio Status Indicator: Clear distinction between Studio MP3 & Native TTS -->
-            <p class="audio-available-hint">
-              <ion-icon [name]="hasRecordedAudio(chapter) ? 'volume-high-outline' : 'mic-outline'" class="audio-status-icon"></ion-icon>
-              <span>{{ getAudioBadgeLabel(chapter) }}</span>
-            </p>
-          </ion-label>
+              <h2 class="chapter-primary-title">{{ localize(chapter.title) }}</h2>
+              <p *ngIf="chapter.subtitle" class="chapter-subtitle-text">{{ localize(chapter.subtitle) }}</p>
+              <p class="audio-available-hint">
+                <ion-icon [name]="hasRecordedAudio(chapter) ? 'volume-high-outline' : 'mic-outline'" class="audio-status-icon"></ion-icon>
+                <span>{{ getAudioBadgeLabel(chapter) }}</span>
+              </p>
+            </ion-label>
 
             <ion-icon
               slot="end"
@@ -114,11 +121,9 @@ import { Book, Chapter } from '../../core/models/app-config.model';
           </ion-item>
 
           <!-- Empty State -->
-          <!-- Empty State -->
           <div *ngIf="filteredChapters.length === 0" class="no-chapters-hint">
             <ion-icon name="document-text-outline" class="empty-chapter-icon"></ion-icon>
             <p class="empty-chapter-title">{{ (uiText$ | async)?.['no_matches_title'] || 'No chapters match' }}: "{{ chapterSearchQuery }}"</p>
-            <p class="empty-chapter-subtitle">Try searching by chapter name or order number</p>
           </div>
         </ion-list>
       </div>
@@ -148,7 +153,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     .chapter-subtitle-text {
       font-size: 0.84rem;
       color: var(--ion-color-medium);
-      line-height: 1.35;
+      line-height: 1.42;
       margin: 2px 0 4px 0;
     }
 
@@ -174,10 +179,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
 
     .banner-watermark-overlay {
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      inset: 0;
       background-image: var(--cover-watermark, none);
       background-repeat: no-repeat;
       background-position: center;
@@ -204,13 +206,13 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       font-weight: 800;
       color: var(--ion-color-primary);
       margin: 0 0 4px 0;
-      line-height: 1.3;
+      line-height: 1.45;
     }
 
     .book-subtitle {
       font-size: 0.88rem;
       color: var(--ion-color-medium);
-      line-height: 1.35;
+      line-height: 1.45;
       margin: 2px 0 8px 0;
     }
 
@@ -257,7 +259,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     }
 
     .chapter-row-item {
-      --background: rgba(255, 248, 236, 0.94);
+      --background: var(--ion-card-background, #fff8ec);
       --border-radius: 14px;
       margin-bottom: 8px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
@@ -283,12 +285,15 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       font-weight: 700;
       font-size: 0.9rem;
       margin-right: 12px;
+      margin-top: 12px;
+      align-self: flex-start;
       flex-shrink: 0;
     }
 
     .chapter-primary-title {
       font-size: 1.05rem;
       font-weight: 700;
+      line-height: 1.45;
       color: var(--ion-text-color);
       margin: 2px 0;
     }
@@ -306,10 +311,13 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     .audio-status-icon {
       font-size: 0.92rem;
       color: var(--ion-color-primary);
+      flex-shrink: 0;
     }
 
     .media-icon {
       font-size: 1.45rem;
+      align-self: flex-start;
+      margin-top: 14px;
     }
 
     .no-chapters-hint {
@@ -330,11 +338,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       color: var(--ion-text-color);
       margin: 0 0 4px 0;
     }
-
-    .empty-chapter-subtitle {
-      font-size: 0.85rem;
-      margin: 0;
-    }
   `]
 })
 export class ChaptersPage implements OnInit, OnDestroy {
@@ -348,6 +351,7 @@ export class ChaptersPage implements OnInit, OnDestroy {
   public activeBook?: Book;
   public activeBookTitle = '';
   private currentLang = 'hi';
+  private uiTextSnapshot: Record<string, string> = {};
   private routeSub?: Subscription;
 
   public chapterSearchQuery = '';
@@ -368,9 +372,11 @@ export class ChaptersPage implements OnInit, OnDestroy {
     this.routeSub = combineLatest([
       this.route.paramMap,
       this.dataService.visibleBooks$,
-      this.storageService.selectedLanguage$
-    ]).subscribe(([params, books, lang]) => {
+      this.storageService.selectedLanguage$,
+      this.dataService.uiText$
+    ]).subscribe(([params, books, lang, ui]) => {
       this.currentLang = lang;
+      this.uiTextSnapshot = ui || {};
       const bookId = params.get('bookId');
       if (!bookId || !books) return;
 
@@ -379,6 +385,11 @@ export class ChaptersPage implements OnInit, OnDestroy {
         this.activeBookTitle = this.localize(this.activeBook.title);
       }
     });
+  }
+
+  public async onPullRefresh(event: CustomEvent): Promise<void> {
+    await this.dataService.syncIfDueToday(true);
+    (event.target as HTMLIonRefresherElement).complete();
   }
 
   public get filteredChapters(): Chapter[] {
@@ -407,67 +418,93 @@ export class ChaptersPage implements OnInit, OnDestroy {
   }
 
   public getChapterSearchPlaceholder(): string {
+    if (this.uiTextSnapshot['search_chapters_placeholder']) {
+      return this.uiTextSnapshot['search_chapters_placeholder'];
+    }
     const map: Record<string, string> = {
       hi: 'अध्याय खोजें...',
       gu: 'પ્રકરણ શોધો...',
       mr: 'धडा शोधा...',
       en: 'Search chapters by name or number...'
     };
-    return map[this.currentLang] || 'Search chapters by name or number...';
+    return map[this.currentLang] || 'Search chapters...';
   }
 
-  public getCoverWatermarkUrl(book: Book | undefined): string {
-    return book?.coverImageUrl ? this.dataService.resolveMediaUrl(book.coverImageUrl) : '';
+  public getChaptersSectionTitle(): string {
+    if (this.uiTextSnapshot['chapters_label']) {
+      return this.uiTextSnapshot['chapters_label'];
+    }
+    const map: Record<string, string> = {
+      hi: 'अध्याय सूची',
+      gu: 'પ્રકરણોની યાદી',
+      mr: 'अध्याय यादी',
+      en: 'Chapters'
+    };
+    return map[this.currentLang] || 'Chapters';
+  }
+
+  public getChaptersCountLabel(count: number): string {
+    if (this.uiTextSnapshot['chapters_label']) {
+      return `${count} ${this.uiTextSnapshot['chapters_label']}`;
+    }
+    const map: Record<string, string> = {
+      hi: `${count} अध्याय`,
+      gu: `${count} પ્રકરણો`,
+      mr: `${count} अध्याय`,
+      en: `${count} Chapters`
+    };
+    return map[this.currentLang] || `${count} Chapters`;
+  }
+
+  public hasRecordedAudio(chapter: Chapter): boolean {
+    if (!chapter?.audioUrl) return false;
+    const rawUrl = this.dataService.localizeField(chapter.audioUrl, this.currentLang);
+    return !!(rawUrl && rawUrl.trim().length > 0);
+  }
+
+  public getAudioBadgeLabel(chapter: Chapter): string {
+    const isAudio = this.hasRecordedAudio(chapter);
+    if (isAudio) {
+      if (this.uiTextSnapshot['audio_playing_recorded']) {
+        return this.uiTextSnapshot['audio_playing_recorded'];
+      }
+      const audioMap: Record<string, string> = {
+        hi: 'ऑडियो उपलब्ध',
+        gu: 'ઓડિયો ઉપલબ્ધ',
+        mr: 'ऑडिओ उपलब्ध',
+        en: 'Recorded Audio'
+      };
+      return audioMap[this.currentLang] || 'Recorded Audio';
+    } else {
+      if (this.uiTextSnapshot['audio_playing_tts']) {
+        return this.uiTextSnapshot['audio_playing_tts'];
+      }
+      const ttsMap: Record<string, string> = {
+        hi: 'वाचन (TTS) उपलब्ध',
+        gu: 'વાંચન (TTS) ઉપલબ્ધ',
+        mr: 'वाचन (TTS) उपलब्ध',
+        en: 'Voice Reader (TTS)'
+      };
+      return ttsMap[this.currentLang] || 'Voice Reader (TTS)';
+    }
+  }
+
+  public getCoverWatermarkUrl(book: Book): string {
+    if (!book?.coverImageUrl) return '';
+    return this.dataService.resolveMediaUrl(book.coverImageUrl);
   }
 
   public localize(mapObj: Record<string, string> | undefined): string {
     return this.dataService.localizeField(mapObj, this.currentLang);
   }
 
-  public hasRecordedAudio(chapter: Chapter): boolean {
-    const raw = this.dataService.localizeField(chapter.audioUrl, this.currentLang);
-    return !!raw && raw.trim().length > 0;
-  }
-
-  public getAudioBadgeLabel(chapter: Chapter): string {
-    if (this.hasRecordedAudio(chapter)) {
-      return this.currentLang === 'gu'
-        ? 'ઓડિયો ઉપલબ્ધ'
-        : this.currentLang === 'mr'
-        ? 'ऑडिओ उपलब्ध'
-        : this.currentLang === 'en'
-        ? 'Recorded Audio'
-        : 'ऑडियो उपलब्ध';
-    }
-    return this.currentLang === 'gu'
-      ? 'સાંભળો (TTS)'
-      : this.currentLang === 'mr'
-      ? 'ऐका (TTS)'
-      : this.currentLang === 'en'
-      ? 'Listen via TTS'
-      : 'बोलकर सुनें (TTS)';
-  }
-
-  public getChaptersCountLabel(count: number): string {
-    if (this.currentLang === 'gu') return `${count} પ્રકરણો`;
-    if (this.currentLang === 'mr') return `${count} धडे`;
-    if (this.currentLang === 'hi') return `${count} अध्याय`;
-    return `${count} Chapters`;
-  }
-
-  public getChaptersSectionTitle(): string {
-    if (this.currentLang === 'gu') return 'પ્રકરણ અનુક્રમણિકા';
-    if (this.currentLang === 'mr') return 'अनुक्रमणिका';
-    if (this.currentLang === 'hi') return 'अध्याय सूची';
-    return 'Chapters Index';
+  public openReader(chapterId: string): void {
+    if (!this.activeBook) return;
+    this.router.navigate(['/reader', this.activeBook.id, chapterId]);
   }
 
   public trackByChapterId(_index: number, chapter: Chapter): string {
     return chapter.id;
-  }
-
-  public openReader(chapterId: string): void {
-    this.router.navigate(['/reader', this.activeBook?.id, chapterId]);
   }
 
   ngOnDestroy(): void {

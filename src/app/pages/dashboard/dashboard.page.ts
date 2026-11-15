@@ -66,7 +66,7 @@ import { Book } from '../../core/models/app-config.model';
         <ion-refresher-content></ion-refresher-content>
       </ion-refresher>
 
-      <!-- Active Announcement Cards (Zero-Flicker Inside Content) -->
+      <!-- Active Announcement Cards (Top-Line Aligned Icons & Badges) -->
       <div class="notification-banner-container" *ngIf="(activeBanners$ | async) as banners">
         <div
           class="banner-item-card"
@@ -82,7 +82,7 @@ import { Book } from '../../core/models/app-config.model';
           <span class="banner-text" [innerHTML]="banner.messageHtml"></span>
 
           <div class="banner-action-chip" *ngIf="banner.targetBookId">
-            <span>{{ banner.actionLabel || 'Read Now' }}</span>
+            <span>{{ banner.actionLabel || (uiText$ | async)?.['read_now'] || 'Read Now' }}</span>
             <ion-icon name="arrow-forward-outline"></ion-icon>
           </div>
         </div>
@@ -100,7 +100,7 @@ import { Book } from '../../core/models/app-config.model';
               *ngFor="let book of books; trackBy: trackByBookId">
               <div
                 class="book-card"
-                [style.--book-watermark]="'url(' + getCoverWatermarkUrl(book) + ')'"
+                [style.--book-watermark]="getCoverWatermarkUrl(book) ? 'url(' + getCoverWatermarkUrl(book) + ')' : 'none'"
                 (click)="openBookChapters(book.id)">
                 <div class="book-watermark-overlay" aria-hidden="true"></div>
 
@@ -113,42 +113,42 @@ import { Book } from '../../core/models/app-config.model';
                   <p *ngIf="book.subtitle" class="book-card-subtitle">{{ localize(book.subtitle) }}</p>
 
                   <div class="chapter-count-badge">
-                  <ion-icon name="book-outline"></ion-icon>
-                  <span>{{ book.chapters.length }} {{ (uiText$ | async)?.['chapters_label'] || 'Chapters' }}</span>
-                </div>
+                    <ion-icon name="book-outline"></ion-icon>
+                    <span>{{ book.chapters.length }} {{ (uiText$ | async)?.['chapters_label'] || 'Chapters' }}</span>
+                  </div>
                 </div>
               </div>
             </ion-col>
           </ng-container>
 
           <!-- Empty State A: User Searched and Found No Matches -->
-        <ion-col size="12" *ngIf="books.length === 0 && currentSearchQuery.trim().length > 0" class="no-books-card ion-text-center">
-          <div class="empty-state-box">
-            <ion-icon name="search-outline" class="empty-icon"></ion-icon>
-            <h3 class="empty-title">{{ (uiText$ | async)?.['no_matches_title'] || 'No books match' }}: "{{ currentSearchQuery }}"</h3>
-            <p class="empty-hint">Try searching in Hindi, Gujarati, or English</p>
-          </div>
-        </ion-col>
+          <ion-col size="12" *ngIf="books.length === 0 && currentSearchQuery.trim().length > 0" class="no-books-card ion-text-center">
+            <div class="empty-state-box">
+              <ion-icon name="search-outline" class="empty-icon"></ion-icon>
+              <h3 class="empty-title">{{ (uiText$ | async)?.['no_matches_title'] || 'No books match' }}: "{{ currentSearchQuery }}"</h3>
+              <p class="empty-hint">{{ (uiText$ | async)?.['search_empty_hint'] || '' }}</p>
+            </div>
+          </ion-col>
 
-        <!-- Empty State B: Network Outage or Catalog Failed to Load -->
-        <ion-col size="12" *ngIf="books.length === 0 && currentSearchQuery.trim().length === 0" class="no-books-card ion-text-center">
-          <div class="empty-state-box">
-            <ion-icon name="cloud-offline-outline" class="empty-icon warning-icon"></ion-icon>
-            <h3 class="empty-title">{{ (uiText$ | async)?.['offline_title'] || 'Unable to Connect to Library' }}</h3>
-            <p class="empty-hint">{{ (uiText$ | async)?.['offline_hint'] || 'Please check your internet connection and tap below to retry.' }}</p>
+          <!-- Empty State B: Network Outage or Catalog Failed to Load -->
+          <ion-col size="12" *ngIf="books.length === 0 && currentSearchQuery.trim().length === 0" class="no-books-card ion-text-center">
+            <div class="empty-state-box">
+              <ion-icon name="cloud-offline-outline" class="empty-icon warning-icon"></ion-icon>
+              <h3 class="empty-title">{{ (uiText$ | async)?.['offline_title'] || 'Unable to Connect to Library' }}</h3>
+              <p class="empty-hint">{{ (uiText$ | async)?.['offline_hint'] || 'Please check your internet connection and tap below to retry.' }}</p>
 
-            <ion-button
-              fill="outline"
-              color="primary"
-              class="retry-btn ion-margin-top"
-              [disabled]="isRetrying"
-              (click)="onRetrySync()">
-              <ion-spinner name="crescent" *ngIf="isRetrying"></ion-spinner>
-              <ion-icon slot="start" name="refresh-outline" *ngIf="!isRetrying"></ion-icon>
-              {{ isRetrying ? '...' : ((uiText$ | async)?.['retry_button'] || 'Tap to Retry') }}
-            </ion-button>
-          </div>
-        </ion-col>
+              <ion-button
+                fill="outline"
+                color="primary"
+                class="retry-btn ion-margin-top"
+                [disabled]="isRetrying"
+                (click)="onRetrySync()">
+                <ion-spinner name="crescent" *ngIf="isRetrying"></ion-spinner>
+                <ion-icon slot="start" name="refresh-outline" *ngIf="!isRetrying"></ion-icon>
+                {{ isRetrying ? '...' : ((uiText$ | async)?.['retry_button'] || 'Tap to Retry') }}
+              </ion-button>
+            </div>
+          </ion-col>
         </ion-row>
       </ion-grid>
     </ion-content>
@@ -172,13 +172,14 @@ import { Book } from '../../core/models/app-config.model';
 
     .banner-item-card {
       display: flex;
-      align-items: center;
-      gap: 12px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 10px 12px;
       background: var(--ion-card-background, #fff8ec);
       border: 1px solid rgba(var(--ion-color-primary-rgb), 0.22);
       border-left: 5px solid var(--ion-color-primary);
       border-radius: 14px;
-      padding: 10px 16px;
+      padding: 12px 16px;
       color: var(--ion-text-color, #2c1810);
       font-weight: 500;
       font-size: 0.92rem;
@@ -196,20 +197,21 @@ import { Book } from '../../core/models/app-config.model';
     }
 
     .banner-left-meta {
-      display: flex;
+      display: inline-flex;
       align-items: center;
       gap: 6px;
       flex-shrink: 0;
+      margin-top: 2px;
     }
 
     .banner-icon {
-      font-size: 1.25rem;
+      font-size: 1.2rem;
       color: var(--ion-color-primary);
     }
 
     .banner-new-badge {
       background: var(--ion-color-primary, #8B2635);
-      color: #ffffff;
+      color: var(--ion-color-primary-contrast, #ffffff);
       font-size: 0.68rem;
       font-weight: 800;
       padding: 2px 6px;
@@ -220,22 +222,32 @@ import { Book } from '../../core/models/app-config.model';
     }
 
     .banner-text {
-      flex: 1;
-      line-height: 1.4;
+      flex: 1 1 180px;
+      line-height: 1.48;
       white-space: pre-line;
+      word-break: break-word;
+    }
+
+    :host ::ng-deep .banner-text p,
+    :host ::ng-deep .banner-text ul,
+    :host ::ng-deep .banner-text ol {
+      margin: 0;
+      padding-left: 18px;
     }
 
     .banner-action-chip {
       display: inline-flex;
       align-items: center;
+      align-self: flex-start;
       gap: 5px;
       background: var(--ion-color-primary, #8B2635);
-      color: #ffffff;
+      color: var(--ion-color-primary-contrast, #ffffff);
       padding: 5px 12px;
       border-radius: 14px;
       font-size: 0.8rem;
       font-weight: 700;
       flex-shrink: 0;
+      margin-top: 1px;
       transition: opacity 0.2s ease;
       white-space: nowrap;
 
@@ -282,7 +294,7 @@ import { Book } from '../../core/models/app-config.model';
       cursor: pointer;
       min-height: 140px;
       display: flex;
-      align-items: center;
+      align-items: stretch;
 
       &:hover {
         transform: translateY(-3px);
@@ -310,13 +322,12 @@ import { Book } from '../../core/models/app-config.model';
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      height: 100%;
       box-sizing: border-box;
     }
 
     .title-row {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
       gap: 10px;
     }
@@ -326,7 +337,8 @@ import { Book } from '../../core/models/app-config.model';
       font-weight: 800;
       color: var(--ion-color-primary);
       margin: 0;
-      line-height: 1.3;
+      padding-top: 2px;
+      line-height: 1.45;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
@@ -339,13 +351,14 @@ import { Book } from '../../core/models/app-config.model';
       font-size: 1.25rem;
       color: var(--ion-color-primary);
       flex-shrink: 0;
+      margin-top: 4px;
     }
 
     .book-card-subtitle {
       margin: 6px 0 10px 0;
       font-size: 0.88rem;
       color: var(--ion-color-medium);
-      line-height: 1.35;
+      line-height: 1.45;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
@@ -366,7 +379,6 @@ import { Book } from '../../core/models/app-config.model';
       font-weight: 700;
     }
 
-    /* Robust Error / Offline / Empty State Card */
     .empty-state-box {
       padding: 42px 20px;
       margin: 20px auto;
@@ -400,7 +412,7 @@ import { Book } from '../../core/models/app-config.model';
       font-size: 0.9rem;
       color: var(--ion-color-medium);
       margin: 0 0 16px 0;
-      line-height: 1.4;
+      line-height: 1.45;
     }
 
     .retry-btn {
@@ -422,6 +434,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
 
   private currentLang = 'hi';
+  private uiTextSnapshot: Record<string, string> = {};
   public currentSearchQuery = '';
   public isRetrying = false;
   private searchSubject = new BehaviorSubject<string>('');
@@ -449,6 +462,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   );
 
   private langSub?: Subscription;
+  private uiSub?: Subscription;
 
   constructor() {
     addIcons({
@@ -464,6 +478,9 @@ export class DashboardPage implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.langSub = this.storageService.selectedLanguage$.subscribe(lang => {
       this.currentLang = lang;
+    });
+    this.uiSub = this.dataService.uiText$.subscribe(ui => {
+      this.uiTextSnapshot = ui || {};
     });
   }
 
@@ -487,6 +504,9 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   public getSearchPlaceholder(): string {
+    if (this.uiTextSnapshot['search_books_placeholder']) {
+      return this.uiTextSnapshot['search_books_placeholder'];
+    }
     const map: Record<string, string> = {
       hi: 'ग्रंथ / पुस्तकें खोजें...',
       gu: 'ગ્રંથો / પુસ્તકો શોધો...',
@@ -502,7 +522,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   public async onPullRefresh(event: CustomEvent): Promise<void> {
-    const result = await this.dataService.syncWithRemote(true);
+    const result = await this.dataService.syncIfDueToday(true);
     (event.target as HTMLIonRefresherElement).complete();
     const uiText = await firstValueFrom(this.dataService.uiText$);
 
@@ -519,12 +539,13 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   public async onRetrySync(): Promise<void> {
     this.isRetrying = true;
-    const result = await this.dataService.syncWithRemote();
+    const result = await this.dataService.syncIfDueToday(true);
     this.isRetrying = false;
 
     if (!result.success) {
+      const uiText = await firstValueFrom(this.dataService.uiText$);
       const toast = await this.toastCtrl.create({
-        message: 'Connection failed. Please check internet connection.',
+        message: uiText['offline_hint'] || 'Connection failed. Please check internet connection.',
         duration: 2200,
         position: 'bottom',
         color: 'danger'
@@ -547,5 +568,6 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.langSub?.unsubscribe();
+    this.uiSub?.unsubscribe();
   }
 }
