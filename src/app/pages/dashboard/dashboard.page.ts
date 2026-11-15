@@ -516,6 +516,19 @@ export class DashboardPage implements OnInit, OnDestroy {
     return map[this.currentLang] || 'Search books...';
   }
 
+  public getAlreadyUpToDateText(): string {
+    if (this.uiTextSnapshot['already_up_to_date']) {
+      return this.uiTextSnapshot['already_up_to_date'];
+    }
+    const map: Record<string, string> = {
+      hi: 'पुस्तकालय पहले से ही अप टू डेट है',
+      gu: 'પુસ્તકાલય પહેલેથી જ અપ ટુ ડેટ છે',
+      mr: 'पुस्तकालय आधीपासूनच अद्ययावत आहे',
+      en: 'Already up to date'
+    };
+    return map[this.currentLang] || 'Already up to date';
+  }
+
   public getCoverWatermarkUrl(book: Book): string {
     if (!book?.coverImageUrl) return '';
     return this.dataService.resolveMediaUrl(book.coverImageUrl);
@@ -526,20 +539,32 @@ export class DashboardPage implements OnInit, OnDestroy {
     (event.target as HTMLIonRefresherElement).complete();
     const uiText = await firstValueFrom(this.dataService.uiText$);
 
+    let message: string;
+    let color: string;
+
+    if (!result.success) {
+      message = uiText['offline_hint'] || 'Could not reach server. Showing saved library.';
+      color = 'medium';
+    } else if (result.isThrottled || !result.isUpdated) {
+      message = uiText['already_up_to_date'] || this.getAlreadyUpToDateText();
+      color = 'dark';
+    } else {
+      message = uiText['library_updated'] || 'Library updated successfully';
+      color = 'success';
+    }
+
     const toast = await this.toastCtrl.create({
-      message: result.success
-        ? (uiText['library_updated'] || 'Library updated successfully')
-        : (uiText['offline_hint'] || 'Could not reach server. Showing saved library.'),
+      message,
       duration: 2000,
       position: 'bottom',
-      color: result.success ? 'success' : 'medium'
+      color
     });
     await toast.present();
   }
 
   public async onRetrySync(): Promise<void> {
     this.isRetrying = true;
-    const result = await this.dataService.syncIfDueToday(true);
+    const result = await this.dataService.syncWithRemote(true);
     this.isRetrying = false;
 
     if (!result.success) {
