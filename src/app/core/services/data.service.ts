@@ -1,7 +1,7 @@
 import { Injectable, NgZone, OnDestroy, inject } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, Observable, Subscription, combineLatest, firstValueFrom, of } from 'rxjs';
-import { map, filter, catchError, distinctUntilChanged } from 'rxjs/operators';
+import { map, filter, catchError, distinctUntilChanged, timeout } from 'rxjs/operators';
 import { App, AppState } from '@capacitor/app';
 import { Preferences } from '@capacitor/preferences';
 import { PluginListenerHandle } from '@capacitor/core';
@@ -37,6 +37,13 @@ export interface ChapterLoadedContent {
   cachedDate?: string;
 }
 
+export interface SyncResult {
+  success: boolean;
+  message: string;
+  isUpdated: boolean;
+  isThrottled?: boolean;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -49,7 +56,11 @@ export class DataService implements OnDestroy {
 
   private readonly CACHE_KEY = `app_manifest_${environment.clientKey}`;
   private readonly LAST_DAILY_SYNC_KEY = `app_last_daily_sync_${environment.clientKey}`;
+  private readonly LAST_HOURLY_REFRESH_KEY = `app_last_hourly_refresh_${environment.clientKey}`;
   private readonly CHAPTER_CACHE_PREFIX = `app_chapter_${environment.clientKey}_`;
+
+  // 1 hour cooldown (in milliseconds) for manual swipe-down hard refresh
+  private readonly HOURLY_COOLDOWN_MS = 60 * 60 * 1000;
 
   private configSubject = new BehaviorSubject<AppConfig | null>(null);
   public readonly config$: Observable<AppConfig> = this.configSubject.asObservable().pipe(
@@ -200,34 +211,66 @@ export class DataService implements OnDestroy {
         }
       });
 
-    await this.syncIfDueToday();
+    // Hard refresh automatically on 1st launch of a new calendar date
+    await this.syncIfDueToday(false);
 
     this.appStateListener = await App.addListener('appStateChange', async (state: AppState) => {
       if (state.isActive) {
         this.ngZone.run(async () => {
-          await this.syncIfDueToday();
+          await this.syncIfDueToday(false);
         });
       }
     });
   }
 
-  public async syncIfDueToday(force = false): Promise<{ success: boolean; message: string; isUpdated: boolean }> {
+  /**
+   * - When force === false (app start / resume):
+   *   Performs a hard refresh ONLY once per day when the calendar date changes.
+   * - When force === true (user swipes down on Dashboard):
+   *   Performs a hard refresh at most ONCE per hour. If swiped again within the
+   *   same 1-hour window, returns { success: true, isUpdated: false, isThrottled: true }.
+   */
+  public async syncIfDueToday(force = false): Promise<SyncResult> {
     const today = this.getLocalDateString();
     const { value: lastSyncDate } = await Preferences.get({ key: this.LAST_DAILY_SYNC_KEY });
     const { value: cachedData } = await Preferences.get({ key: this.CACHE_KEY });
 
-    if (!force && !!cachedData && lastSyncDate === today) {
-      return { success: true, message: 'Already updated today', isUpdated: false };
+    if (!force) {
+      if (!!cachedData && lastSyncDate === today) {
+        return { success: true, message: 'Already updated today', isUpdated: false, isThrottled: false };
+      }
+
+      // First launch on a new date -> execute hard refresh
+      const dailyResult = await this.syncWithRemote(true);
+      if (dailyResult.success) {
+        await Preferences.set({ key: this.LAST_DAILY_SYNC_KEY, value: today });
+      }
+      return dailyResult;
     }
 
-    const result = await this.syncWithRemote(force);
-    if (result.success) {
-      await Preferences.set({ key: this.LAST_DAILY_SYNC_KEY, value: today });
+    // Manual swipe-down refresh (force === true): enforce 1-hour maximum cooldown
+    const { value: lastHourlyStr } = await Preferences.get({ key: this.LAST_HOURLY_REFRESH_KEY });
+    const lastHourlyTs = lastHourlyStr ? Number(lastHourlyStr) : 0;
+    const now = Date.now();
+
+    if (!!cachedData && lastHourlyTs > 0 && now - lastHourlyTs < this.HOURLY_COOLDOWN_MS) {
+      return {
+        success: true,
+        message: 'Already up to date',
+        isUpdated: false,
+        isThrottled: true
+      };
     }
-    return result;
+
+    const manualResult = await this.syncWithRemote(true);
+    if (manualResult.success) {
+      await Preferences.set({ key: this.LAST_DAILY_SYNC_KEY, value: today });
+      await Preferences.set({ key: this.LAST_HOURLY_REFRESH_KEY, value: String(now) });
+    }
+    return manualResult;
   }
 
-  public async syncWithRemote(forceRefresh = false): Promise<{ success: boolean; message: string; isUpdated: boolean }> {
+  public async syncWithRemote(forceRefresh = false): Promise<SyncResult> {
     try {
       const endpoint = environment.firebaseConfigUrl;
       if (!endpoint || endpoint.startsWith('__') || !endpoint.startsWith('https://')) {
@@ -239,40 +282,17 @@ export class DataService implements OnDestroy {
         baseDir = `${baseDir}/`;
       }
 
-      const manifestFiles = [
-        'app_identity.json',
-        'supportedLanguages.json',
-        'ui_translations.json',
-        'books.json',
-        'updateBannerMessage.json',
-        'about_info.json',
-        'notification_schedules.json'
-      ];
-
-      // When user explicitly pulls down to refresh on jsDelivr, purge edge cache for manifest files
-      if (forceRefresh && baseDir.includes('cdn.jsdelivr.net/gh/')) {
-        const purgeBase = baseDir.replace('https://cdn.jsdelivr.net/gh/', 'https://purge.jsdelivr.net/gh/');
-        await Promise.all(
-          manifestFiles.map(file =>
-            fetch(`${purgeBase}${file}`, { method: 'GET', mode: 'cors' }).catch(() => null)
-          )
-        );
-      }
-
       const dailyKey = this.getLocalDateString();
       const cb = forceRefresh ? `_cb=${Date.now()}` : `_v=${dailyKey}`;
-      const httpOptions = forceRefresh
-        ? { headers: new HttpHeaders({ 'Cache-Control': 'no-cache', Pragma: 'no-cache' }) }
-        : {};
 
       const [identity, languages, ui, books, banner, about, schedules] = await Promise.all([
-        firstValueFrom(this.http.get<AppIdentity>(`${baseDir}app_identity.json?${cb}`, httpOptions).pipe(catchError(() => of(null)))),
-        firstValueFrom(this.http.get<SupportedLanguage[]>(`${baseDir}supportedLanguages.json?${cb}`, httpOptions).pipe(catchError(() => of([])))),
-        firstValueFrom(this.http.get<UiTranslations>(`${baseDir}ui_translations.json?${cb}`, httpOptions).pipe(catchError(() => of({})))),
-        firstValueFrom(this.http.get<Book[]>(`${baseDir}books.json?${cb}`, httpOptions).pipe(catchError(() => of([])))),
-        firstValueFrom(this.http.get<any>(`${baseDir}updateBannerMessage.json?${cb}`, httpOptions).pipe(catchError(() => of([])))),
-        firstValueFrom(this.http.get<AboutInfo>(`${baseDir}about_info.json?${cb}`, httpOptions).pipe(catchError(() => of({ description: {}, feedback_links: {} })))),
-        firstValueFrom(this.http.get<NotificationSchedule[]>(`${baseDir}notification_schedules.json?${cb}`, httpOptions).pipe(catchError(() => of([]))))
+        this.fetchRemoteJson<AppIdentity | null>(`${baseDir}app_identity.json`, cb, forceRefresh, null),
+        this.fetchRemoteJson<SupportedLanguage[]>(`${baseDir}supportedLanguages.json`, cb, forceRefresh, []),
+        this.fetchRemoteJson<UiTranslations>(`${baseDir}ui_translations.json`, cb, forceRefresh, {}),
+        this.fetchRemoteJson<Book[]>(`${baseDir}books.json`, cb, forceRefresh, []),
+        this.fetchRemoteJson<any>(`${baseDir}updateBannerMessage.json`, cb, forceRefresh, []),
+        this.fetchRemoteJson<AboutInfo>(`${baseDir}about_info.json`, cb, forceRefresh, { description: {}, feedback_links: {} }),
+        this.fetchRemoteJson<NotificationSchedule[]>(`${baseDir}notification_schedules.json`, cb, forceRefresh, [])
       ]);
 
       if (!identity || typeof identity !== 'object' || !Array.isArray(books) || books.length === 0) {
@@ -305,12 +325,11 @@ export class DataService implements OnDestroy {
           await this.clearDiskChapterCache();
         }
         await this.saveCachedConfig(constructedConfig);
-        await Preferences.set({ key: this.LAST_DAILY_SYNC_KEY, value: dailyKey });
         this.applyAndPublishConfig(constructedConfig);
-        return { success: true, message: 'Updated from remote', isUpdated: true };
+        return { success: true, message: 'Updated from remote', isUpdated: true, isThrottled: false };
       }
 
-      return { success: true, message: 'Already up to date', isUpdated: false };
+      return { success: true, message: 'Already up to date', isUpdated: false, isThrottled: false };
     } catch (err: any) {
       console.warn('[DataService] Remote sync failed, using cached state:', err?.message || err);
       if (!this.configSubject.value) {
@@ -321,6 +340,50 @@ export class DataService implements OnDestroy {
       }
       return { success: false, message: err?.message || 'Remote sync failed', isUpdated: false };
     }
+  }
+
+  /**
+   * Standard CORS Simple GET request (no custom headers that trigger OPTIONS preflight failures).
+   * When forceRefresh is true, checks raw.githubusercontent.com first (with a 4s timeout) for
+   * immediate Git commit freshness and falls back to cdn.jsdelivr.net.
+   */
+  private fetchRemoteJson<T>(url: string, cb: string, forceRefresh: boolean, fallbackValue: T): Promise<T> {
+    const primaryUrl = `${url}?${cb}`;
+    if (forceRefresh) {
+      const rawUrl = this.toGithubRawUrl(url);
+      if (rawUrl) {
+        return firstValueFrom(
+          this.http.get<T>(`${rawUrl}?${cb}`).pipe(
+            timeout(4000),
+            catchError(() =>
+              this.http.get<T>(primaryUrl).pipe(
+                timeout(6000),
+                catchError(() => of(fallbackValue))
+              )
+            )
+          )
+        );
+      }
+    }
+    return firstValueFrom(
+      this.http.get<T>(primaryUrl).pipe(
+        timeout(6000),
+        catchError(() => of(fallbackValue))
+      )
+    );
+  }
+
+  private toGithubRawUrl(url: string): string | null {
+    if (url.startsWith('https://cdn.jsdelivr.net/gh/')) {
+      const rest = url.replace('https://cdn.jsdelivr.net/gh/', '');
+      const atIdx = rest.indexOf('@');
+      if (atIdx > 0) {
+        const repoPart = rest.substring(0, atIdx);
+        const branchAndPath = rest.substring(atIdx + 1);
+        return `https://raw.githubusercontent.com/${repoPart}/${branchAndPath}`;
+      }
+    }
+    return null;
   }
 
   private async clearDiskChapterCache(): Promise<void> {
@@ -409,13 +472,12 @@ export class DataService implements OnDestroy {
     }
 
     try {
-      if (forceRefresh && targetUrl.includes('cdn.jsdelivr.net/gh/')) {
-        const purgeUrl = targetUrl.replace('https://cdn.jsdelivr.net/gh/', 'https://purge.jsdelivr.net/gh/');
-        await fetch(purgeUrl, { method: 'GET', mode: 'cors' }).catch(() => null);
+      const cb = forceRefresh ? `_cb=${Date.now()}` : `_v=${dailyKey}`;
+      const res = await this.fetchRemoteJson<any>(targetUrl, cb, forceRefresh, null);
+      if (!res) {
+        throw new Error('Empty chapter response');
       }
 
-      const cb = forceRefresh ? `_cb=${Date.now()}` : `_v=${dailyKey}`;
-      const res = await firstValueFrom(this.http.get<any>(`${targetUrl}?${cb}`));
       const transcriptMap = res?.transcript || (res && (res.hi || res.gu || res.en) ? res : {});
 
       let imagesList: string[] = [];
@@ -489,10 +551,6 @@ export class DataService implements OnDestroy {
     return SecurityUtil.sanitizeCssUrl(`${base}/${path}`);
   }
 
-  /**
-   * Automatically upgrades raw.githubusercontent.com URLs to cdn.jsdelivr.net
-   * when activeProvider is 'jsdelivr' to avoid GitHub's 60 req/hr rate limit.
-   */
   private normalizeToActiveCdn(url: string): string {
     if (environment.activeProvider === 'jsdelivr' && url.startsWith('https://raw.githubusercontent.com/')) {
       const parts = url.replace('https://raw.githubusercontent.com/', '').split('/');
