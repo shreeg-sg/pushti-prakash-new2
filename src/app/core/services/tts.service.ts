@@ -154,13 +154,17 @@ export class TtsService implements OnDestroy {
     });
 
     const playableUrl = await this.resolveOfflineOrRemoteAudioUrl(chapterId, langCode, remoteUrl);
+    const isLocalCachedFile = playableUrl !== remoteUrl || playableUrl.includes('/_capacitor_file_/');
 
     // Verify remote URL exists before attaching to HTMLAudioElement to prevent 404 hangs
-    if (playableUrl.startsWith('https://')) {
+    // Skip HEAD probe when playing a locally cached file from device storage
+    if (!isLocalCachedFile && playableUrl.startsWith('https://')) {
       try {
         const probe = await fetch(playableUrl, { method: 'HEAD' });
         if (!probe.ok) {
-          this.missingAudioUrls.add(remoteUrl);
+          if (probe.status === 404) {
+            this.missingAudioUrls.add(remoteUrl);
+          }
           this.patchState({ isPlaying: autoPlay });
           this.switchToTtsFallback();
           return;
@@ -175,6 +179,7 @@ export class TtsService implements OnDestroy {
     this.audioElement.src = playableUrl;
     this.audioElement.playbackRate = this.stateSubject.value.playbackRate;
     this.audioElement.load();
+    this.updateMediaSessionMetadata();
 
     if (autoPlay) {
       this.requestScreenWakeLock().catch(() => {});
@@ -204,6 +209,7 @@ export class TtsService implements OnDestroy {
   public async play(): Promise<void> {
     const state = this.stateSubject.value;
     this.requestScreenWakeLock().catch(() => {});
+    this.updateMediaSessionMetadata();
 
     if (state.mode === 'audio') {
       try {
@@ -433,6 +439,9 @@ export class TtsService implements OnDestroy {
       return remoteUrl;
     }
 
+    const safeChapterId = (chapterId || 'ch').replace(/[^a-zA-Z0-9_-]/g, '');
+    const safeLang = (langCode || 'hi').replace(/[^a-zA-Z0-9_-]/g, '');
+
     // Issue #18: Include ?v= query version in cache key so updated MP3s invalidate stale disk cache
     let versionTag = '1';
     try {
@@ -441,14 +450,14 @@ export class TtsService implements OnDestroy {
       if (v) versionTag = v.replace(/[^a-zA-Z0-9_-]/g, '');
     } catch {}
 
-    const filePath = `audio_cache/${chapterId}_${langCode}_v${versionTag}.mp3`;
+    const filePath = `audio_cache/${safeChapterId}_${safeLang}_v${versionTag}.mp3`;
     try {
       const stat = await Filesystem.stat({ path: filePath, directory: Directory.Data });
       if (stat.uri && stat.size && stat.size > 1000) {
         return Capacitor.convertFileSrc(stat.uri);
       }
     } catch {
-      this.cleanupOldAudioVersions(chapterId, langCode, filePath).catch(() => {});
+      this.cleanupOldAudioVersions(safeChapterId, safeLang, filePath).catch(() => {});
       this.cacheAudioInBackground(filePath, remoteUrl);
     }
     return remoteUrl;
@@ -499,6 +508,7 @@ export class TtsService implements OnDestroy {
 
   private async cacheAudioInBackground(filePath: string, remoteUrl: string): Promise<void> {
     try {
+      if (!remoteUrl.startsWith('https://')) return;
       await Filesystem.downloadFile({
         path: filePath,
         directory: Directory.Data,
@@ -506,6 +516,21 @@ export class TtsService implements OnDestroy {
         recursive: true
       });
     } catch {}
+  }
+
+  private updateMediaSessionMetadata(): void {
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator && this.activeMetadata) {
+      try {
+        const meta = this.activeMetadata;
+        (navigator as any).mediaSession.metadata = new (window as any).MediaMetadata({
+          title: meta.chapterTitle || 'Sacred Recitation',
+          artist: meta.bookTitle || 'PushtiPrakash',
+          artwork: meta.coverImageUrl ? [{ src: meta.coverImageUrl }] : []
+        });
+        (navigator as any).mediaSession.setActionHandler('play', () => this.play());
+        (navigator as any).mediaSession.setActionHandler('pause', () => this.pause());
+      } catch {}
+    }
   }
 
   private async requestScreenWakeLock(): Promise<void> {
