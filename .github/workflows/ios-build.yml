@@ -67,9 +67,16 @@ jobs:
           FIREBASE_URL: ${{ inputs.firebase_config_url }}
           BUILD_VERSION: ${{ inputs.build_version }}
         run: |
-          sed -i '' "s|__CLIENT_KEY__|${CLIENT_KEY}|g" src/environments/environment.prod.ts
-          sed -i '' "s|__FIREBASE_CONFIG_URL__|${FIREBASE_URL}|g" src/environments/environment.prod.ts
-          sed -i '' "s|__BUILD_VERSION__|${BUILD_VERSION}|g" src/environments/environment.prod.ts
+          node -e '
+            const fs = require("fs");
+            const path = "src/environments/environment.prod.ts";
+            let content = fs.readFileSync(path, "utf8");
+            const safeStr = (val) => String(val || "").replace(/\\/g, "\\\\").replace(/\x27/g, "\\\x27");
+            content = content.replace(/__CLIENT_KEY__/g, safeStr(process.env.CLIENT_KEY));
+            content = content.replace(/__FIREBASE_CONFIG_URL__/g, safeStr(process.env.FIREBASE_URL));
+            content = content.replace(/__BUILD_VERSION__/g, safeStr(process.env.BUILD_VERSION));
+            fs.writeFileSync(path, content, "utf8");
+          '
           cat src/environments/environment.prod.ts
 
       - name: Stamp Client App ID and Name in Capacitor Config
@@ -108,21 +115,31 @@ jobs:
             /usr/libexec/PlistBuddy -c "Set :CFBundleName \"${APP_NAME}\"" "$PLIST_PATH" || true
             /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString \"${BUILD_VERSION}\"" "$PLIST_PATH" || true
             /usr/libexec/PlistBuddy -c "Set :CFBundleVersion \"${VERSION_CODE}\"" "$PLIST_PATH" || true
+            /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$PLIST_PATH" || true
+            /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string audio" "$PLIST_PATH" || true
           fi
-          PBXPROJ_PATH="ios/App/App.xcodeproj/project.pbxproj"
-          if [ -f "$PBXPROJ_PATH" ]; then
-            sed -i '' "s|PRODUCT_BUNDLE_IDENTIFIER = [^;]*;|PRODUCT_BUNDLE_IDENTIFIER = ${APP_ID};|g" "$PBXPROJ_PATH"
-          fi
+          node -e '
+            const fs = require("fs");
+            const pbxPath = "ios/App/App.xcodeproj/project.pbxproj";
+            if (fs.existsSync(pbxPath)) {
+              let pbx = fs.readFileSync(pbxPath, "utf8");
+              const appId = String(process.env.APP_ID || "com.pushtiprakash.reader").replace(/[^a-zA-Z0-9._-]/g, "");
+              pbx = pbx.replace(/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/g, `PRODUCT_BUNDLE_IDENTIFIER = ${appId};`);
+              fs.writeFileSync(pbxPath, pbx, "utf8");
+            }
+          '
 
       - name: Stamp iOS App & Notification Icon from Client Logo
+        env:
+          LOGO_URL: ${{ inputs.logo_url }}
         run: |
           mkdir -p /tmp
           if [ -f "src/assets/images/logo.png" ]; then
             echo "Found logo locally at src/assets/images/logo.png"
             cp src/assets/images/logo.png /tmp/logo.png
-          elif [ -n "${{ inputs.logo_url }}" ]; then
-            echo "Downloading logo from remote URL ${{ inputs.logo_url }}..."
-            curl -s -L "${{ inputs.logo_url }}" -o /tmp/logo.png || true
+          elif [ -n "$LOGO_URL" ]; then
+            echo "Downloading logo from remote URL $LOGO_URL..."
+            curl -s -L "$LOGO_URL" -o /tmp/logo.png || true
           fi
 
           if [ -s /tmp/logo.png ]; then
@@ -215,3 +232,4 @@ jobs:
           name: ${{ inputs.client_key }}-ios-xcarchive-v${{ inputs.build_version }}
           path: ios/App/build/App.xcarchive
           retention-days: 14
+
