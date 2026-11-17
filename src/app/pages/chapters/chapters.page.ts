@@ -9,7 +9,8 @@ import {
   IonItem,
   IonLabel,
   IonIcon,
-  IonSearchbar
+  IonSearchbar,
+  IonButton
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
@@ -19,7 +20,8 @@ import {
   arrowBackOutline,
   searchOutline,
   micOutline,
-  volumeHighOutline
+  volumeHighOutline,
+  homeOutline
 } from 'ionicons/icons';
 import { Observable, Subscription, combineLatest } from 'rxjs';
 
@@ -41,7 +43,8 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     IonItem,
     IonLabel,
     IonIcon,
-    IonSearchbar
+    IonSearchbar,
+    IonButton
   ],
   template: `
     <app-header [pageTitle]="activeBookTitle"></app-header>
@@ -58,7 +61,17 @@ import { Book, Chapter } from '../../core/models/app-config.model';
         <ion-refresher-content></ion-refresher-content>
       </ion-refresher>
 
-      <div class="chapters-wrapper" *ngIf="activeBook">
+      <!-- Fallback when book is hidden or invalid -->
+      <div class="no-chapters-hint" *ngIf="isBookUnavailable">
+        <ion-icon name="book-outline" class="empty-chapter-icon"></ion-icon>
+        <p class="empty-chapter-title">{{ (uiText$ | async)?.['chapter_unavailable'] || 'This book is currently unavailable.' }}</p>
+        <ion-button fill="outline" color="primary" class="ion-margin-top" (click)="goToDashboard()">
+          <ion-icon slot="start" name="home-outline"></ion-icon>
+          {{ (uiText$ | async)?.['nav_dashboard'] || 'Back to Library' }}
+        </ion-button>
+      </div>
+
+      <div class="chapters-wrapper" *ngIf="activeBook && !isBookUnavailable">
         <!-- Title & Subtitle Card -->
         <div
           class="book-banner-card"
@@ -79,6 +92,7 @@ import { Book, Chapter } from '../../core/models/app-config.model';
         <!-- Search Bar -->
         <div class="chapter-searchbar-container">
           <ion-searchbar
+            [value]="chapterSearchQuery"
             [placeholder]="getChapterSearchPlaceholder()"
             [debounce]="100"
             (ionInput)="onChapterSearch($event)"
@@ -324,6 +338,8 @@ import { Book, Chapter } from '../../core/models/app-config.model';
       text-align: center;
       padding: 32px 16px;
       color: var(--ion-color-medium);
+      position: relative;
+      z-index: 1;
     }
 
     .empty-chapter-icon {
@@ -350,7 +366,9 @@ export class ChaptersPage implements OnInit, OnDestroy {
   public watermarkUrl$: Observable<string> = this.dataService.watermarkUrl$;
   public activeBook?: Book;
   public activeBookTitle = '';
+  public isBookUnavailable = false;
   private currentLang = 'hi';
+  private lastBookId = '';
   private uiTextSnapshot: Record<string, string> = {};
   private routeSub?: Subscription;
 
@@ -364,7 +382,8 @@ export class ChaptersPage implements OnInit, OnDestroy {
       arrowBackOutline,
       searchOutline,
       micOutline,
-      volumeHighOutline
+      volumeHighOutline,
+      homeOutline
     });
   }
 
@@ -377,12 +396,20 @@ export class ChaptersPage implements OnInit, OnDestroy {
     ]).subscribe(([params, books, lang, ui]) => {
       this.currentLang = lang;
       this.uiTextSnapshot = ui || {};
-      const bookId = params.get('bookId');
+      const bookId = params.get('bookId') || '';
+      if (bookId !== this.lastBookId) {
+        this.lastBookId = bookId;
+        this.chapterSearchQuery = '';
+      }
       if (!bookId || !books) return;
 
       this.activeBook = books.find((b: Book) => b.id === bookId);
       if (this.activeBook) {
+        this.isBookUnavailable = false;
         this.activeBookTitle = this.localize(this.activeBook.title);
+      } else {
+        this.isBookUnavailable = true;
+        this.activeBookTitle = '';
       }
     });
   }
@@ -501,6 +528,10 @@ export class ChaptersPage implements OnInit, OnDestroy {
   public openReader(chapterId: string): void {
     if (!this.activeBook) return;
     this.router.navigate(['/reader', this.activeBook.id, chapterId]);
+  }
+
+  public goToDashboard(): void {
+    this.router.navigate(['/dashboard'], { replaceUrl: true });
   }
 
   public trackByChapterId(_index: number, chapter: Chapter): string {
