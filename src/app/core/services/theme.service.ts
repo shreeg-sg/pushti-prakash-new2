@@ -25,7 +25,11 @@ export class ThemeService {
     if (!identity?.theme) return;
 
     const root = this.document.documentElement;
-    const { theme, watermarkUrl, logoUrl } = identity;
+    const { theme, watermarkUrl, logoUrl, defaultAppName } = identity;
+
+    if (defaultAppName && this.document) {
+      this.document.title = defaultAppName;
+    }
 
     const safePrimary = SecurityUtil.sanitizeHexColor(theme.primary, '#8B2635');
     const safeSecondary = SecurityUtil.sanitizeHexColor(theme.secondary, '#D4AF37');
@@ -54,6 +58,11 @@ export class ThemeService {
       const safeText = SecurityUtil.sanitizeHexColor(theme.textPrimary, '#2C1810');
       root.style.setProperty('--ion-text-color', safeText);
       root.style.setProperty('--ion-text-color-rgb', this.hexToRgbString(safeText));
+    }
+
+    if (theme.textSecondary) {
+      const safeMuted = SecurityUtil.sanitizeHexColor(theme.textSecondary, '#6E4F42');
+      this.setIonicColorVariable(root, 'medium', safeMuted);
     }
 
     const rawWatermark = (watermarkUrl && watermarkUrl.trim().length > 0)

@@ -81,7 +81,13 @@ jobs:
           APP_ID: ${{ inputs.app_id }}
           APP_NAME: ${{ inputs.app_name }}
         run: |
-          npx json -I -f capacitor.config.json -e "this.appId='${APP_ID}'; this.appName='${APP_NAME}';" || true
+          node -e '
+            const fs = require("fs");
+            const cfg = JSON.parse(fs.readFileSync("capacitor.config.json", "utf8"));
+            cfg.appId = process.env.APP_ID;
+            cfg.appName = process.env.APP_NAME;
+            fs.writeFileSync("capacitor.config.json", JSON.stringify(cfg, null, 2));
+          '
 
       - name: Build Angular Production Web Bundle
         run: npm run build -- --configuration=production
@@ -143,10 +149,12 @@ jobs:
               convert /tmp/logo.png -resize "${icon_size}x${icon_size}" -gravity center -background none -extent "${size}x${size}" "$dir/ic_launcher_round.png" || true
               convert /tmp/logo.png -resize "${icon_size}x${icon_size}" -gravity center -background none -extent "${size}x${size}" "$dir/ic_launcher_foreground.png" || true
 
-              # Auto-generate pure white (#FFFFFF) transparent silhouette for Android status bar notifications
+              # Strip light background first so non-transparent logos produce a clean white silhouette
               notif_dir="android/app/src/main/res/drawable-${folder}"
               mkdir -p "$notif_dir"
-              convert /tmp/logo.png -resize "${notif_size}x${notif_size}" -alpha extract -background white -alpha shape "$notif_dir/ic_stat_notify.png" || true
+              convert /tmp/logo.png -resize "${notif_size}x${notif_size}" \
+                -fuzz 18% -transparent white -fuzz 18% -transparent "#fffdf9" -fuzz 18% -transparent "#fff8ec" \
+                -alpha extract -background white -alpha shape "$notif_dir/ic_stat_notify.png" || true
             done
             echo "Successfully generated Android launcher icons and monochrome notification icons!"
           else
@@ -160,7 +168,7 @@ jobs:
           ./gradlew assembleRelease
           ./gradlew bundleRelease
 
-      - name: Sign Release APK with apksigner
+      - name: Sign Release APK and Play Store AAB
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -177,7 +185,7 @@ jobs:
             PASS_VAL="$KS_PASS"
             KPASS_VAL="${KEY_PASS:-$KS_PASS}"
           else
-            echo "Notice: GitHub Secrets not configured. Generating temporary keystore for testing..."
+            echo "Notice: GitHub Secrets not configured. Generating keystore for signing..."
             ALIAS_NAME="pushtikey"
             PASS_VAL=$(openssl rand -hex 16)
             KPASS_VAL="$PASS_VAL"
@@ -187,30 +195,42 @@ jobs:
               -dname "CN=PushtiPrakash, OU=Mobile, O=Pushti, L=Mumbai, S=MH, C=IN"
           fi
 
-          # Align the unsigned APK
+          # 1. Align and sign Release APK
           $BUILD_TOOLS_DIR/zipalign -v -p 4 \
             android/app/build/outputs/apk/release/app-release-unsigned.apk \
             android/app/build/outputs/apk/release/app-release-aligned.apk
 
-          # Sign with apksigner (v1, v2, v3 schemes)
           $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore \
             --ks-key-alias "$ALIAS_NAME" \
             --ks-pass "pass:$PASS_VAL" --key-pass "pass:$KPASS_VAL" \
             --out android/app/build/outputs/apk/release/app-release-signed.apk \
             android/app/build/outputs/apk/release/app-release-aligned.apk
 
-          # Remove keystore file immediately after signing
-          rm -f release.keystore
-
-          # Verify signature
           $BUILD_TOOLS_DIR/apksigner verify -v android/app/build/outputs/apk/release/app-release-signed.apk
-          echo "APK successfully signed and verified!"
 
-      - name: Purge jsDelivr CDN Cache
+          # 2. Sign Google Play Store AAB with jarsigner
+          cp android/app/build/outputs/bundle/release/app-release.aab \
+             android/app/build/outputs/bundle/release/app-release-signed.aab
+
+          jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+            -keystore release.keystore \
+            -storepass "$PASS_VAL" -keypass "$KPASS_VAL" \
+            android/app/build/outputs/bundle/release/app-release-signed.aab "$ALIAS_NAME"
+
+          rm -f release.keystore
+          echo "Both APK and Play Store AAB successfully signed!"
+
+      - name: Purge jsDelivr CDN Cache for Active Tenant
+        env:
+          CONFIG_URL: ${{ inputs.firebase_config_url }}
         run: |
-          echo "Purging jsDelivr edge cache for all mock configuration assets..."
-          curl -s -I "https://purge.jsdelivr.net/gh/shreeg-sg/pushtiprakash-media@main/src/assets/" || true
-          echo "jsDelivr cache purge request sent successfully!"
+          if [[ "$CONFIG_URL" == *"cdn.jsdelivr.net/gh/"* ]]; then
+            PURGE_BASE="${CONFIG_URL/https:\/\/cdn.jsdelivr.net\/gh\//https:\/\/purge.jsdelivr.net\/gh\/}"
+            PURGE_BASE="${PURGE_BASE%/}/"
+            for f in app_identity.json supportedLanguages.json ui_translations.json books.json updateBannerMessage.json about_info.json notification_schedules.json; do
+              curl -s "${PURGE_BASE}${f}" || true
+            done
+          fi
 
       - name: Upload Installable Signed Release APK
         uses: actions/upload-artifact@v4
@@ -219,9 +239,9 @@ jobs:
           path: android/app/build/outputs/apk/release/app-release-signed.apk
           retention-days: 14
 
-      - name: Upload Unsigned Google Play AAB
+      - name: Upload Signed Google Play AAB
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.client_key }}-release-aab-v${{ inputs.build_version }}
-          path: android/app/build/outputs/bundle/release/app-release.aab
+          name: ${{ inputs.client_key }}-signed-aab-v${{ inputs.build_version }}
+          path: android/app/build/outputs/bundle/release/app-release-signed.aab
           retention-days: 14

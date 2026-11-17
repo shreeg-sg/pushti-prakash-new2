@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   IonContent,
+  IonRefresher,
+  IonRefresherContent,
   IonButton,
   IonIcon,
   IonRange,
@@ -43,6 +45,8 @@ import { SecurityUtil } from '../../core/utils/security.util';
     CommonModule,
     HeaderComponent,
     IonContent,
+    IonRefresher,
+    IonRefresherContent,
     IonButton,
     IonIcon,
     IonRange,
@@ -61,7 +65,7 @@ import { SecurityUtil } from '../../core/utils/security.util';
         <ion-icon
           slot="icon-only"
           [name]="(isBookmarked$ | async) ? 'star' : 'star-outline'"
-          [style.color]="(isBookmarked$ | async) ? '#FFD700' : '#FFFFFF'">
+          [style.color]="(isBookmarked$ | async) ? 'var(--ion-color-secondary, #FFD700)' : 'var(--ion-toolbar-color, #FFFFFF)'">
         </ion-icon>
       </ion-button>
     </app-header>
@@ -74,12 +78,16 @@ import { SecurityUtil } from '../../core/utils/security.util';
         aria-hidden="true">
       </div>
 
-      <!-- Issue #21: Graceful fallback when book/chapter is hidden or invalid -->
+      <ion-refresher slot="fixed" (ionRefresh)="onPullRefresh($event)">
+        <ion-refresher-content></ion-refresher-content>
+      </ion-refresher>
+
+      <!-- Graceful fallback when book/chapter is hidden or invalid -->
       <div class="transcript-error" *ngIf="isChapterUnavailable">
-        <p class="error-msg">This chapter is currently unavailable.</p>
+        <p class="error-msg">{{ (uiText$ | async)?.['chapter_unavailable'] || 'This chapter is currently unavailable.' }}</p>
         <ion-button fill="outline" color="primary" (click)="goToDashboard()">
           <ion-icon slot="start" name="home-outline"></ion-icon>
-          Back to Library
+          {{ (uiText$ | async)?.['nav_dashboard'] || 'Back to Library' }}
         </ion-button>
       </div>
 
@@ -88,7 +96,7 @@ import { SecurityUtil } from '../../core/utils/security.util';
         <h1 class="chapter-heading">{{ localize(activeChapter.title) }}</h1>
         <p *ngIf="activeChapter.subtitle" class="chapter-subheading">{{ localize(activeChapter.subtitle) }}</p>
 
-        <!-- 100% Solid Opaque 3:4 Chapter Header Images -->
+        <!-- 100% Solid Opaque Chapter Header Images -->
         <div class="chapter-images-list" *ngIf="chapterImages.length > 0 && !isLoadingTranscript">
           <div class="chapter-image-wrapper" *ngFor="let imgUrl of chapterImages">
             <img
@@ -108,8 +116,8 @@ import { SecurityUtil } from '../../core/utils/security.util';
 
         <!-- Error State with Retry -->
         <div class="transcript-error" *ngIf="!isLoadingTranscript && transcriptParagraphs.length === 0">
-          <p class="error-msg">Unable to load chapter content from media server.</p>
-          <ion-button fill="outline" color="primary" (click)="retryLoadTranscript()">
+          <p class="error-msg">{{ (uiText$ | async)?.['offline_hint'] || 'Unable to load chapter content from media server.' }}</p>
+          <ion-button fill="outline" color="primary" (click)="retryLoadTranscript(true)">
             <ion-icon slot="start" name="refresh-outline"></ion-icon>
             {{ (uiText$ | async)?.['retry_button'] || 'Tap to Retry' }}
           </ion-button>
@@ -129,25 +137,23 @@ import { SecurityUtil } from '../../core/utils/security.util';
 
     <div class="floating-dock-wrapper" *ngIf="!isChapterUnavailable && (playerState$ | async) as state">
       <div class="sticky-stepper-bar">
-      <ion-button
-      fill="solid"
-      color="light"
-      class="stepper-nav-btn"
-      [disabled]="!prevChapterId"
-      (click)="goToSiblingChapter(prevChapterId)">
-      <ion-icon slot="start" name="play-skip-back-outline"></ion-icon>
-      {{ (uiText$ | async)?.['prev_chapter'] || 'Prev Chapter' }}
-    </ion-button>
+        <ion-button
+          fill="solid"
+          class="stepper-nav-btn"
+          [disabled]="!prevChapterId"
+          (click)="goToSiblingChapter(prevChapterId)">
+          <ion-icon slot="start" name="play-skip-back-outline"></ion-icon>
+          {{ (uiText$ | async)?.['prev_chapter'] || 'Prev Chapter' }}
+        </ion-button>
 
-    <ion-button
-      fill="solid"
-      color="light"
-      class="stepper-nav-btn"
-      [disabled]="!nextChapterId"
-      (click)="goToSiblingChapter(nextChapterId)">
-      {{ (uiText$ | async)?.['next_chapter'] || 'Next Chapter' }}
-      <ion-icon slot="end" name="play-skip-forward-outline"></ion-icon>
-    </ion-button>
+        <ion-button
+          fill="solid"
+          class="stepper-nav-btn"
+          [disabled]="!nextChapterId"
+          (click)="goToSiblingChapter(nextChapterId)">
+          {{ (uiText$ | async)?.['next_chapter'] || 'Next Chapter' }}
+          <ion-icon slot="end" name="play-skip-forward-outline"></ion-icon>
+        </ion-button>
       </div>
 
       <div class="floating-audio-dock">
@@ -166,9 +172,8 @@ import { SecurityUtil } from '../../core/utils/security.util';
           <span class="time-counter" *ngIf="state.mode === 'audio'">
             {{ formatSeconds(state.currentTime) }} / {{ formatSeconds(state.duration) }}
           </span>
-          <!-- Issue #17: Explicit Line/Verse indicator in TTS mode -->
           <span class="time-counter" *ngIf="state.mode === 'tts'">
-            Line {{ state.currentTime + 1 }} / {{ state.duration || 1 }}
+            {{ (uiText$ | async)?.['tts_line_label'] || 'Line' }} {{ state.currentTime + 1 }} / {{ state.duration || 1 }}
           </span>
         </div>
 
@@ -191,7 +196,7 @@ import { SecurityUtil } from '../../core/utils/security.util';
               aria-label="Playback Speed">
               <ion-select-option [value]="0.75">0.75x</ion-select-option>
               <ion-select-option [value]="0.85">0.85x</ion-select-option>
-              <ion-select-option [value]="1.0">1.0x (Normal)</ion-select-option>
+              <ion-select-option [value]="1.0">1.0x</ion-select-option>
               <ion-select-option [value]="1.25">1.25x</ion-select-option>
               <ion-select-option [value]="1.5">1.5x</ion-select-option>
             </ion-select>
@@ -259,6 +264,7 @@ import { SecurityUtil } from '../../core/utils/security.util';
     .chapter-heading {
       font-size: 1.45rem;
       font-weight: 800;
+      line-height: 1.45;
       margin-top: 0;
       margin-bottom: 6px;
       color: var(--ion-text-color);
@@ -267,6 +273,7 @@ import { SecurityUtil } from '../../core/utils/security.util';
     .chapter-subheading {
       font-size: 0.94rem;
       font-weight: 500;
+      line-height: 1.45;
       color: var(--ion-color-medium);
       margin-top: 0;
       margin-bottom: 18px;
@@ -362,6 +369,7 @@ import { SecurityUtil } from '../../core/utils/security.util';
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 8px;
       background: var(--ion-card-background, #fff8ec);
       border: 1px solid rgba(var(--ion-color-primary-rgb), 0.2);
       border-radius: 14px;
@@ -370,11 +378,17 @@ import { SecurityUtil } from '../../core/utils/security.util';
     }
 
     .stepper-nav-btn {
+      flex: 1;
+      max-width: 48%;
+      min-width: 0;
       --border-radius: 10px;
+      --background: rgba(var(--ion-color-primary-rgb, 139, 38, 53), 0.12);
+      --background-activated: rgba(var(--ion-color-primary-rgb, 139, 38, 53), 0.22);
+      --color: var(--ion-color-primary, #8B2635);
+      --box-shadow: none;
       font-weight: 700;
-      font-size: 0.88rem;
+      font-size: 0.85rem;
       height: 44px;
-      min-width: 125px;
     }
 
     .floating-audio-dock {
@@ -389,6 +403,7 @@ import { SecurityUtil } from '../../core/utils/security.util';
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 8px;
     }
 
     .mode-badge {
@@ -405,6 +420,7 @@ import { SecurityUtil } from '../../core/utils/security.util';
       font-size: 0.82rem;
       font-weight: 600;
       color: var(--ion-color-medium);
+      white-space: nowrap;
     }
 
     .player-scrub-bar {
@@ -456,7 +472,7 @@ import { SecurityUtil } from '../../core/utils/security.util';
     }
 
     .transport-spacer-right {
-      width: 76px;
+      width: 68px;
     }
   `]
 })
@@ -544,7 +560,7 @@ export class ReaderPage implements OnInit, OnDestroy {
         this.activeChapter = resolved.chapter;
         this.activeChapterTitle = this.dataService.localizeField(resolved.chapter.title, lang);
 
-        await this.loadChapterTextAndAudio(resolved.book, resolved.chapter, lang, ttsLocale);
+        await this.loadChapterTextAndAudio(resolved.book, resolved.chapter, lang, ttsLocale, false);
       });
   }
 
@@ -552,10 +568,11 @@ export class ReaderPage implements OnInit, OnDestroy {
     book: Book,
     chapter: Chapter,
     lang: string,
-    ttsLocale: string
+    ttsLocale: string,
+    forceRefresh = false
   ): Promise<void> {
     this.isLoadingTranscript = true;
-    const content = await this.dataService.loadChapterContent(book.id, chapter);
+    const content = await this.dataService.loadChapterContent(book.id, chapter, forceRefresh);
     this.isLoadingTranscript = false;
 
     let rawImages: string[] = [];
@@ -575,7 +592,6 @@ export class ReaderPage implements OnInit, OnDestroy {
       .map(p => p.trim())
       .filter(p => p.length > 0);
 
-    // Issue #16: Map exact TTS chunk index range per paragraph so repeated refrains don't highlight multiple paragraphs
     let chunkCursor = 0;
     this.paragraphChunkRanges = rawParagraphs.map(p => {
       const chunksInPara = p
@@ -615,19 +631,24 @@ export class ReaderPage implements OnInit, OnDestroy {
     this.shouldAutoPlayNext = false;
   }
 
+  public async onPullRefresh(event: CustomEvent): Promise<void> {
+    await this.dataService.syncIfDueToday(true);
+    await this.retryLoadTranscript(true);
+    (event.target as HTMLIonRefresherElement).complete();
+  }
+
   public onImageLoadError(failedUrl: string): void {
     console.warn('[ReaderPage] Could not load image from:', failedUrl);
     this.chapterImages = this.chapterImages.filter(url => url !== failedUrl);
   }
 
-  // Issue #15: Look up configured ttsLocale from enabledLanguages$ instead of hardcoding `${lang}-IN`
-  public async retryLoadTranscript(): Promise<void> {
+  public async retryLoadTranscript(forceRefresh = false): Promise<void> {
     if (this.activeBook && this.activeChapter) {
       const lang = this.currentLang;
       const enabledLangs = await firstValueFrom(this.dataService.enabledLanguages$);
       const langMeta = enabledLangs.find(l => l.code === lang);
       const ttsLocale = langMeta?.ttsLocale || `${lang}-IN`;
-      await this.loadChapterTextAndAudio(this.activeBook, this.activeChapter, lang, ttsLocale);
+      await this.loadChapterTextAndAudio(this.activeBook, this.activeChapter, lang, ttsLocale, forceRefresh);
     }
   }
 

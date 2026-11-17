@@ -62,8 +62,8 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
               }}
             </ion-card-title>
             <ion-card-subtitle class="welcome-subtitle">
-              <ion-icon name="globe-outline"></ion-icon>
-              <span>
+              <ion-icon name="globe-outline" class="subtitle-globe-icon"></ion-icon>
+              <span class="subtitle-prompt-text">
                 {{ (uiText$ | async)?.['select_language_prompt'] || 'Please select your preferred language' }}
               </span>
             </ion-card-subtitle>
@@ -112,6 +112,7 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
       display: flex;
       align-items: center;
       justify-content: center;
+      padding: env(safe-area-inset-top, 12px) 0 env(safe-area-inset-bottom, 12px);
     }
     .onboarding-loading-box {
       display: flex;
@@ -160,19 +161,30 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
     .welcome-heading {
       font-size: 1.35rem;
       font-weight: 700;
+      line-height: 1.45;
       margin-top: 8px;
       color: var(--ion-color-primary, #8B2635);
       text-align: center !important;
     }
     .welcome-subtitle {
-      display: flex;
-      align-items: center;
+      display: inline-flex;
+      align-items: flex-start;
       justify-content: center;
       gap: 6px;
       margin-top: 8px;
       font-size: 0.95rem;
-      text-align: center !important;
+      line-height: 1.45;
+      text-align: left;
       color: var(--ion-color-medium, #6e4f42);
+    }
+    .subtitle-globe-icon {
+      font-size: 1.1rem;
+      margin-top: 3px;
+      flex-shrink: 0;
+      color: var(--ion-color-primary, #8B2635);
+    }
+    .subtitle-prompt-text {
+      text-align: center;
     }
     .language-column {
       display: flex;
@@ -186,15 +198,16 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
     .lang-option-btn {
       width: 100%;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
       position: relative;
-      padding: 14px 20px;
+      padding: 14px 40px;
       border-radius: 12px;
       border: 2px solid rgba(var(--ion-color-primary-rgb, 139, 38, 53), 0.2);
       background: #ffffff;
       color: var(--ion-text-color, #2c1810);
       font-size: 1.05rem;
+      line-height: 1.4;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.18s ease;
@@ -207,7 +220,8 @@ import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.mod
     }
     .check-icon {
       position: absolute;
-      right: 16px;
+      right: 14px;
+      top: 15px;
       font-size: 1.35rem;
       color: var(--ion-color-primary, #8B2635);
     }
@@ -236,7 +250,6 @@ export class OnboardingPage implements OnInit {
   public selectedLang = 'hi';
   public isLoadingConfig = true;
 
-  // Resilient fallback languages if remote manifest is delayed
   public availableLanguages: SupportedLanguage[] = [
     { code: 'hi', name: 'हिन्दी', ttsLocale: 'hi-IN', isEnabled: true },
     { code: 'gu', name: 'ગુજરાતી', ttsLocale: 'gu-IN', isEnabled: true },
@@ -250,7 +263,6 @@ export class OnboardingPage implements OnInit {
   ngOnInit(): void {
     this.selectedLang = this.storageService.getCurrentLanguageSnapshot() || 'hi';
 
-    // Hydrate enabled languages dynamically as soon as remote config emits
     this.dataService.enabledLanguages$.subscribe(langs => {
       if (langs && langs.length > 0) {
         this.availableLanguages = langs;
@@ -261,7 +273,6 @@ export class OnboardingPage implements OnInit {
       this.isLoadingConfig = false;
     });
 
-    // Safety timeout: dismiss loading indicator after 2s even if offline
     setTimeout(() => {
       this.isLoadingConfig = false;
     }, 2000);

@@ -72,8 +72,8 @@ import { FooterComponent } from './footer.component';
           detail="false"
           [class.active-menu-item]="(activePath$ | async) === '/dashboard'"
           (click)="navigateTo(['/dashboard'])">
-          <ion-icon slot="start" name="home-outline"></ion-icon>
-          <ion-label>{{ (uiText$ | async)?.['nav_dashboard'] || 'Dashboard' }}</ion-label>
+          <ion-icon slot="start" name="home-outline" class="nav-icon"></ion-icon>
+          <ion-label class="ion-text-wrap">{{ (uiText$ | async)?.['nav_dashboard'] || 'Dashboard' }}</ion-label>
         </ion-item>
 
         <ion-item
@@ -81,8 +81,8 @@ import { FooterComponent } from './footer.component';
           detail="false"
           [class.active-menu-item]="(activePath$ | async) === '/bookmarks'"
           (click)="navigateTo(['/bookmarks'])">
-          <ion-icon slot="start" name="bookmark-outline"></ion-icon>
-          <ion-label>{{ (uiText$ | async)?.['nav_bookmarks'] || 'Bookmarks' }}</ion-label>
+          <ion-icon slot="start" name="bookmark-outline" class="nav-icon"></ion-icon>
+          <ion-label class="ion-text-wrap">{{ (uiText$ | async)?.['nav_bookmarks'] || 'Bookmarks' }}</ion-label>
         </ion-item>
 
         <ion-item
@@ -90,8 +90,8 @@ import { FooterComponent } from './footer.component';
           detail="false"
           [class.active-menu-item]="(activePath$ | async) === '/about'"
           (click)="navigateTo(['/about'])">
-          <ion-icon slot="start" name="information-circle-outline"></ion-icon>
-          <ion-label>{{ (uiText$ | async)?.['nav_about'] || 'About Us' }}</ion-label>
+          <ion-icon slot="start" name="information-circle-outline" class="nav-icon"></ion-icon>
+          <ion-label class="ion-text-wrap">{{ (uiText$ | async)?.['nav_about'] || 'About Us' }}</ion-label>
         </ion-item>
       </ion-list>
 
@@ -142,11 +142,11 @@ import { FooterComponent } from './footer.component';
   `,
   styles: [`
     .sidebar-brand-toolbar {
-      padding: 16px 12px;
+      padding: calc(12px + var(--ion-safe-area-top, env(safe-area-inset-top, 0px))) 12px 14px;
     }
     .brand-container {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 12px;
     }
     .brand-logo {
@@ -156,15 +156,24 @@ import { FooterComponent } from './footer.component';
       object-fit: contain;
       background: rgba(255, 255, 255, 0.9);
       padding: 4px;
+      flex-shrink: 0;
     }
     .brand-title {
       font-size: 1.15rem;
       font-weight: 700;
+      line-height: 1.4;
       letter-spacing: 0.2px;
+      margin-top: 6px;
     }
     .nav-section {
       padding: 8px;
       border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .nav-icon,
+    .book-icon,
+    .chapter-icon {
+      align-self: flex-start;
+      margin-top: 12px;
     }
     .active-menu-item {
       --background: rgba(var(--ion-color-primary-rgb), 0.14);
@@ -187,6 +196,9 @@ import { FooterComponent } from './footer.component';
       --color: var(--ion-color-primary);
       font-weight: 600;
     }
+    .book-title-label {
+      line-height: 1.42;
+    }
     .chapter-list {
       background: rgba(var(--ion-color-primary-rgb), 0.03);
       padding-top: 4px;
@@ -195,6 +207,7 @@ import { FooterComponent } from './footer.component';
     .chapter-item {
       --min-height: 40px;
       font-size: 0.92rem;
+      line-height: 1.42;
       border-radius: 8px;
       margin: 2px 8px 2px 0;
     }

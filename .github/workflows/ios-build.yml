@@ -77,7 +77,13 @@ jobs:
           APP_ID: ${{ inputs.app_id }}
           APP_NAME: ${{ inputs.app_name }}
         run: |
-          npx json -I -f capacitor.config.json -e "this.appId='${APP_ID}'; this.appName='${APP_NAME}';" || true
+          node -e '
+            const fs = require("fs");
+            const cfg = JSON.parse(fs.readFileSync("capacitor.config.json", "utf8"));
+            cfg.appId = process.env.APP_ID;
+            cfg.appName = process.env.APP_NAME;
+            fs.writeFileSync("capacitor.config.json", JSON.stringify(cfg, null, 2));
+          '
 
       - name: Build Angular Production Web Bundle
         run: npm run build -- --configuration=production
@@ -89,8 +95,9 @@ jobs:
           fi
           npx cap sync ios
 
-      - name: Stamp iOS App Name, Bundle ID & Version in Info.plist
+      - name: Stamp iOS App Name, Bundle ID & Version in Info.plist & Xcode Project
         env:
+          APP_ID: ${{ inputs.app_id }}
           APP_NAME: ${{ inputs.app_name }}
           BUILD_VERSION: ${{ inputs.build_version }}
           VERSION_CODE: ${{ inputs.version_code }}
@@ -101,6 +108,10 @@ jobs:
             /usr/libexec/PlistBuddy -c "Set :CFBundleName \"${APP_NAME}\"" "$PLIST_PATH" || true
             /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString \"${BUILD_VERSION}\"" "$PLIST_PATH" || true
             /usr/libexec/PlistBuddy -c "Set :CFBundleVersion \"${VERSION_CODE}\"" "$PLIST_PATH" || true
+          fi
+          PBXPROJ_PATH="ios/App/App.xcodeproj/project.pbxproj"
+          if [ -f "$PBXPROJ_PATH" ]; then
+            sed -i '' "s|PRODUCT_BUNDLE_IDENTIFIER = [^;]*;|PRODUCT_BUNDLE_IDENTIFIER = ${APP_ID};|g" "$PBXPROJ_PATH"
           fi
 
       - name: Stamp iOS App & Notification Icon from Client Logo
@@ -145,7 +156,7 @@ jobs:
                     fg_size = int(size * 0.68)
                     resized = img.resize((fg_size, fg_size), Image.Resampling.LANCZOS)
                     canvas = Image.new('RGBA', (size, size), (255, 253, 249, 255))
-                    offset = ((size - fg_size) // 2, (size - fg_size) // 2)
+                    offset = ((size - fg_size) // 2, ((size - fg_size) // 2))
                     canvas.paste(resized, offset, mask=resized)
                     canvas.convert('RGB').save(f'{icon_dir}/{fname}')
                 print('Generated 68% scaled iOS app & notification icons without alpha transparency.')
@@ -185,6 +196,18 @@ jobs:
             -archivePath build/App.xcarchive \
             archive \
             CODE_SIGNING_ALLOWED=NO
+
+      - name: Purge jsDelivr CDN Cache for Active Tenant
+        env:
+          CONFIG_URL: ${{ inputs.firebase_config_url }}
+        run: |
+          if [[ "$CONFIG_URL" == *"cdn.jsdelivr.net/gh/"* ]]; then
+            PURGE_BASE="${CONFIG_URL/https:\/\/cdn.jsdelivr.net\/gh\//https:\/\/purge.jsdelivr.net\/gh\/}"
+            PURGE_BASE="${PURGE_BASE%/}/"
+            for f in app_identity.json supportedLanguages.json ui_translations.json books.json updateBannerMessage.json about_info.json notification_schedules.json; do
+              curl -s "${PURGE_BASE}${f}" || true
+            done
+          fi
 
       - name: Upload iOS Xcode Archive Artifact
         uses: actions/upload-artifact@v4
