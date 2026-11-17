@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, inject } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, NavigationEnd } from '@angular/router';
 import {
@@ -23,7 +23,7 @@ import {
   checkmarkOutline,
   searchOutline
 } from 'ionicons/icons';
-import { Observable, combineLatest, firstValueFrom } from 'rxjs';
+import { Observable, Subscription, combineLatest, firstValueFrom } from 'rxjs';
 import { filter, map, startWith } from 'rxjs/operators';
 
 import { DataService } from '../core/services/data.service';
@@ -144,7 +144,7 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
                   </div>
                 </div>
 
-                <div class="popover-section">
+                <div class="popover-section" *ngIf="isReaderRoute$ | async">
                   <div class="section-label-row">
                     <ion-icon name="text-outline" color="primary"></ion-icon>
                     <span class="section-label-text">
@@ -336,7 +336,7 @@ import { FontSizeScale, SupportedLanguage } from '../core/models/app-config.mode
     }
   `]
 })
-export class HeaderComponent implements OnInit {
+export class HeaderComponent implements OnInit, OnDestroy {
   @Input() pageTitle?: string;
   @Input() showBackButton?: boolean;
   @Input() showSearch = false;
@@ -359,6 +359,13 @@ export class HeaderComponent implements OnInit {
 
   public isSearchActive = false;
   public searchQuery = '';
+  private navSub?: Subscription;
+
+  public isReaderRoute$: Observable<boolean> = this.router.events.pipe(
+    filter(event => event instanceof NavigationEnd),
+    startWith(null),
+    map(() => this.router.url.includes('/reader/'))
+  );
 
   public resolvedRouteTitle$: Observable<string> = combineLatest([
     this.router.events.pipe(
@@ -407,7 +414,16 @@ export class HeaderComponent implements OnInit {
     });
   }
 
-  ngOnInit(): void { }
+  ngOnInit(): void {
+    this.navSub = this.router.events
+      .pipe(filter(event => event instanceof NavigationEnd))
+      .subscribe(() => {
+        if (this.isSearchActive) {
+          this.isSearchActive = false;
+          this.clearSearch();
+        }
+      });
+  }
 
   public toggleSearch(): void {
     this.isSearchActive = !this.isSearchActive;
@@ -463,5 +479,9 @@ export class HeaderComponent implements OnInit {
 
   public trackByLangCode(_index: number, lang: SupportedLanguage): string {
     return lang.code;
+  }
+
+  ngOnDestroy(): void {
+    this.navSub?.unsubscribe();
   }
 }
