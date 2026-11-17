@@ -81,6 +81,10 @@ export class NotificationService implements OnDestroy {
     try {
       await this.initialize();
 
+      // Guard: if remote schedules array is missing/empty due to a fetch/parse error,
+      // do not wipe out existing valid pending notifications on the device.
+      if (!Array.isArray(schedules) || schedules.length === 0) return;
+
       let permStatus = await LocalNotifications.checkPermissions();
       if (permStatus.display === 'prompt' || permStatus.display === 'prompt-with-rationale') {
         permStatus = await LocalNotifications.requestPermissions();
@@ -92,7 +96,7 @@ export class NotificationService implements OnDestroy {
         await LocalNotifications.cancel({ notifications: pending.notifications });
       }
 
-      const activeSchedules = (schedules || []).filter(item => item.isEnabled);
+      const activeSchedules = schedules.filter(item => item && item.isEnabled);
       if (activeSchedules.length === 0) return;
 
       const now = Date.now();
@@ -150,7 +154,16 @@ export class NotificationService implements OnDestroy {
       }
 
       if (notificationsToSchedule.length > 0) {
-        await LocalNotifications.schedule({ notifications: notificationsToSchedule });
+        try {
+          await LocalNotifications.schedule({ notifications: notificationsToSchedule });
+        } catch {
+          // Fallback for Android 12-15 devices where exact alarm permission is restricted
+          const fallbackNotifications = notificationsToSchedule.map(n => ({
+            ...n,
+            schedule: n.schedule ? { ...n.schedule, allowWhileIdle: false } : undefined
+          }));
+          await LocalNotifications.schedule({ notifications: fallbackNotifications });
+        }
       }
     } catch (error) {
       console.warn('[NotificationService] Failed to reschedule notifications:', error);
