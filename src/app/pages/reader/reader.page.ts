@@ -506,6 +506,7 @@ export class ReaderPage implements OnInit, OnDestroy {
   private chapterId = '';
   private routeMediaSub?: Subscription;
   private shouldAutoPlayNext = false;
+  private loadSequenceId = 0;
 
   constructor() {
     addIcons({
@@ -571,8 +572,13 @@ export class ReaderPage implements OnInit, OnDestroy {
     ttsLocale: string,
     forceRefresh = false
   ): Promise<void> {
+    const seq = ++this.loadSequenceId;
     this.isLoadingTranscript = true;
     const content = await this.dataService.loadChapterContent(book.id, chapter, forceRefresh);
+
+    // Abort if user switched chapters or language while awaiting remote/disk content
+    if (seq !== this.loadSequenceId) return;
+
     this.isLoadingTranscript = false;
 
     let rawImages: string[] = [];
@@ -615,6 +621,9 @@ export class ReaderPage implements OnInit, OnDestroy {
     const resolvedAudioUrl = this.dataService.resolveMediaUrl(rawAudioUrl);
     const resolvedCoverUrl = this.dataService.resolveMediaUrl(book.coverImageUrl);
 
+    const autoPlay = this.shouldAutoPlayNext;
+    this.shouldAutoPlayNext = false;
+
     await this.ttsService.loadChapterMedia(
       {
         chapterId: chapter.id,
@@ -626,9 +635,8 @@ export class ReaderPage implements OnInit, OnDestroy {
         audioUrl: resolvedAudioUrl,
         transcript: rawTranscript
       },
-      this.shouldAutoPlayNext
+      autoPlay
     );
-    this.shouldAutoPlayNext = false;
   }
 
   public async onPullRefresh(event: CustomEvent): Promise<void> {
@@ -717,6 +725,7 @@ export class ReaderPage implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.loadSequenceId++;
     this.routeMediaSub?.unsubscribe();
     this.ttsService.stop();
   }
