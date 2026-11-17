@@ -61,6 +61,7 @@ export class DataService implements OnDestroy {
 
   // 1 hour cooldown (in milliseconds) for manual swipe-down hard refresh
   private readonly HOURLY_COOLDOWN_MS = 60 * 60 * 1000;
+  private readonly SAFE_ID_REGEX = /^[a-zA-Z0-9_-]+$/;
 
   private configSubject = new BehaviorSubject<AppConfig | null>(null);
   public readonly config$: Observable<AppConfig> = this.configSubject.asObservable().pipe(
@@ -93,14 +94,15 @@ export class DataService implements OnDestroy {
     if (!bannerData) return [];
 
     const today = this.getLocalDateString();
-    const rawEligibleItems: any[] = [];
+    const specificEligibleItems: any[] = [];
+    const defaultEligibleItems: any[] = [];
 
     if (Array.isArray(bannerData)) {
       for (const item of bannerData) {
         if (!item || item.isEnabled === false) continue;
 
         if (item.date && item.date === today) {
-          rawEligibleItems.push(item);
+          specificEligibleItems.push(item);
           continue;
         }
 
@@ -110,24 +112,27 @@ export class DataService implements OnDestroy {
           const isAfterStart = !start || today >= start;
           const isBeforeEnd = !end || today <= end;
           if (isAfterStart && isBeforeEnd) {
-            rawEligibleItems.push(item);
+            specificEligibleItems.push(item);
             continue;
           }
         }
 
         if (item.isDefault || item.date === 'default') {
-          rawEligibleItems.push(item);
+          defaultEligibleItems.push(item);
         }
       }
     } else if (typeof bannerData === 'object') {
       if (bannerData[today]) {
-        rawEligibleItems.push({ message: bannerData[today] });
+        specificEligibleItems.push({ message: bannerData[today] });
       } else if (bannerData.default) {
-        rawEligibleItems.push({ message: bannerData.default });
+        defaultEligibleItems.push({ message: bannerData.default });
       } else {
-        rawEligibleItems.push({ message: bannerData });
+        defaultEligibleItems.push({ message: bannerData });
       }
     }
+
+    // Show specific-date or date-range notifications when active; fall back to default banner otherwise
+    const rawEligibleItems = specificEligibleItems.length > 0 ? specificEligibleItems : defaultEligibleItems;
 
     const results: ActiveBannerView[] = [];
     let counter = 1;
@@ -137,12 +142,19 @@ export class DataService implements OnDestroy {
       const safeMsgHtml = SecurityUtil.sanitizeSafeHtml(rawMsg);
 
       if (safeMsgHtml && safeMsgHtml.trim().length > 0) {
+        const cleanBookId = typeof item.targetBookId === 'string' && this.SAFE_ID_REGEX.test(item.targetBookId.trim())
+          ? item.targetBookId.trim()
+          : undefined;
+        const cleanChapterId = typeof item.targetChapterId === 'string' && this.SAFE_ID_REGEX.test(item.targetChapterId.trim())
+          ? item.targetChapterId.trim()
+          : undefined;
+
         results.push({
           id: item.id ? String(item.id) : `banner_${counter++}`,
           messageHtml: safeMsgHtml,
           isNew: item.isNew === true,
-          targetBookId: typeof item.targetBookId === 'string' ? item.targetBookId.trim() : undefined,
-          targetChapterId: typeof item.targetChapterId === 'string' ? item.targetChapterId.trim() : undefined,
+          targetBookId: cleanBookId,
+          targetChapterId: cleanChapterId,
           actionLabel: item.actionLabel ? this.localizeField(item.actionLabel, lang) : undefined
         });
       }
@@ -201,15 +213,16 @@ export class DataService implements OnDestroy {
       }
     }
 
-    this.langNotifySub = this.storageService.selectedLanguage$
-      .pipe(distinctUntilChanged())
-      .subscribe(lang => {
-        const cfg = this.configSubject.value;
-        if (cfg?.notification_schedules) {
-          const primaryColor = cfg.app_identity?.theme?.primary || '#8B2635';
-          this.notificationService.rescheduleNotifications(cfg.notification_schedules, lang, primaryColor).catch(() => {});
-        }
-      });
+    this.langNotifySub = combineLatest([
+      this.storageService.selectedLanguage$.pipe(distinctUntilChanged()),
+      this.storageService.hasCompletedOnboarding$.pipe(distinctUntilChanged())
+    ]).subscribe(([lang, _onboarded]) => {
+      const cfg = this.configSubject.value;
+      if (cfg?.notification_schedules) {
+        const primaryColor = cfg.app_identity?.theme?.primary || '#8B2635';
+        this.notificationService.rescheduleNotifications(cfg.notification_schedules, lang, primaryColor).catch(() => {});
+      }
+    });
 
     // Hard refresh automatically on 1st launch of a new calendar date
     await this.syncIfDueToday(false);
@@ -278,29 +291,54 @@ export class DataService implements OnDestroy {
       }
 
       let baseDir = endpoint.trim();
-      if (!baseDir.endsWith('/')) {
+      if (!baseDir.endsWith('/') && !baseDir.endsWith('%2F')) {
         baseDir = `${baseDir}/`;
       }
 
       const dailyKey = this.getLocalDateString();
       const cb = forceRefresh ? `_cb=${Date.now()}` : `_v=${dailyKey}`;
 
+      // Preserve existing cached/bundled sections if any individual secondary JSON fails to load
+      const existing = this.configSubject.value || (await this.loadBundledFallbackConfig());
+
       const [identity, languages, ui, books, banner, about, schedules] = await Promise.all([
-        this.fetchRemoteJson<AppIdentity | null>(`${baseDir}app_identity.json`, cb, forceRefresh, null),
-        this.fetchRemoteJson<SupportedLanguage[]>(`${baseDir}supportedLanguages.json`, cb, forceRefresh, []),
-        this.fetchRemoteJson<UiTranslations>(`${baseDir}ui_translations.json`, cb, forceRefresh, {}),
-        this.fetchRemoteJson<Book[]>(`${baseDir}books.json`, cb, forceRefresh, []),
-        this.fetchRemoteJson<any>(`${baseDir}updateBannerMessage.json`, cb, forceRefresh, []),
-        this.fetchRemoteJson<AboutInfo>(`${baseDir}about_info.json`, cb, forceRefresh, { description: {}, feedback_links: {} }),
-        this.fetchRemoteJson<NotificationSchedule[]>(`${baseDir}notification_schedules.json`, cb, forceRefresh, [])
+        this.fetchRemoteJson<AppIdentity | null>(this.buildProviderFileUrl(baseDir, 'app_identity.json'), cb, forceRefresh, null),
+        this.fetchRemoteJson<SupportedLanguage[]>(
+          this.buildProviderFileUrl(baseDir, 'supportedLanguages.json'),
+          cb,
+          forceRefresh,
+          existing?.supportedLanguages || []
+        ),
+        this.fetchRemoteJson<UiTranslations>(
+          this.buildProviderFileUrl(baseDir, 'ui_translations.json'),
+          cb,
+          forceRefresh,
+          existing?.ui_translations || {}
+        ),
+        this.fetchRemoteJson<Book[]>(this.buildProviderFileUrl(baseDir, 'books.json'), cb, forceRefresh, []),
+        this.fetchRemoteJson<any>(
+          this.buildProviderFileUrl(baseDir, 'updateBannerMessage.json'),
+          cb,
+          forceRefresh,
+          existing?.updateBannerMessage || []
+        ),
+        this.fetchRemoteJson<AboutInfo>(
+          this.buildProviderFileUrl(baseDir, 'about_info.json'),
+          cb,
+          forceRefresh,
+          existing?.about_info || { description: {}, feedback_links: {} }
+        ),
+        this.fetchRemoteJson<NotificationSchedule[]>(
+          this.buildProviderFileUrl(baseDir, 'notification_schedules.json'),
+          cb,
+          forceRefresh,
+          existing?.notification_schedules || []
+        )
       ]);
 
       if (!identity || typeof identity !== 'object' || !Array.isArray(books) || books.length === 0) {
-        if (!this.configSubject.value) {
-          const fallback = await this.loadBundledFallbackConfig();
-          if (fallback) {
-            this.applyAndPublishConfig(fallback);
-          }
+        if (!this.configSubject.value && existing) {
+          this.applyAndPublishConfig(existing);
         }
         return { success: false, message: 'Invalid or empty remote manifest', isUpdated: false };
       }
@@ -309,24 +347,33 @@ export class DataService implements OnDestroy {
         schemaVersion: 1,
         lastUpdatedIso: this.getLocalDateString(),
         app_identity: identity,
-        supportedLanguages: Array.isArray(languages) ? languages : [],
-        ui_translations: ui && typeof ui === 'object' && !Array.isArray(ui) ? (ui as UiTranslations) : {},
+        supportedLanguages: Array.isArray(languages) && languages.length > 0 ? languages : (existing?.supportedLanguages || []),
+        ui_translations: ui && typeof ui === 'object' && !Array.isArray(ui) && Object.keys(ui).length > 0
+          ? (ui as UiTranslations)
+          : (existing?.ui_translations || {}),
         books: books,
         updateBannerMessage: banner,
         about_info: about,
-        notification_schedules: Array.isArray(schedules) ? schedules : []
+        notification_schedules: Array.isArray(schedules) && schedules.length > 0
+          ? schedules
+          : (existing?.notification_schedules || [])
       };
 
       const isUpdated = this.hasConfigChanged(this.configSubject.value, constructedConfig);
 
       if (forceRefresh || isUpdated || !this.configSubject.value) {
         this.chapterContentCache.clear();
-        if (forceRefresh || isUpdated) {
+        if (isUpdated) {
           await this.clearDiskChapterCache();
         }
         await this.saveCachedConfig(constructedConfig);
         this.applyAndPublishConfig(constructedConfig);
-        return { success: true, message: 'Updated from remote', isUpdated: true, isThrottled: false };
+        return {
+          success: true,
+          message: isUpdated ? 'Updated from remote' : 'Already up to date',
+          isUpdated,
+          isThrottled: false
+        };
       }
 
       return { success: true, message: 'Already up to date', isUpdated: false, isThrottled: false };
@@ -348,12 +395,14 @@ export class DataService implements OnDestroy {
    * immediate Git commit freshness and falls back to cdn.jsdelivr.net.
    */
   private fetchRemoteJson<T>(url: string, cb: string, forceRefresh: boolean, fallbackValue: T): Promise<T> {
-    const primaryUrl = `${url}?${cb}`;
+    const sep = url.includes('?') ? '&' : '?';
+    const primaryUrl = `${url}${sep}${cb}`;
     if (forceRefresh) {
       const rawUrl = this.toGithubRawUrl(url);
       if (rawUrl) {
+        const rawSep = rawUrl.includes('?') ? '&' : '?';
         return firstValueFrom(
-          this.http.get<T>(`${rawUrl}?${cb}`).pipe(
+          this.http.get<T>(`${rawUrl}${rawSep}${cb}`).pipe(
             timeout(4000),
             catchError(() =>
               this.http.get<T>(primaryUrl).pipe(
@@ -371,6 +420,17 @@ export class DataService implements OnDestroy {
         catchError(() => of(fallbackValue))
       )
     );
+  }
+
+  private buildProviderFileUrl(baseDir: string, relativeFile: string): string {
+    const cleanRel = relativeFile.replace(/^\/+/, '');
+    if (baseDir.includes('firebasestorage.googleapis.com/v0/b/')) {
+      const encodedRel = cleanRel.split('/').map(encodeURIComponent).join('%2F');
+      const sep = baseDir.endsWith('/') || baseDir.endsWith('%2F') ? '' : '%2F';
+      const full = `${baseDir}${sep}${encodedRel}`;
+      return full.includes('alt=media') ? full : `${full}${full.includes('?') ? '&' : '?'}alt=media`;
+    }
+    return `${baseDir.replace(/\/+$/, '')}/${cleanRel}`;
   }
 
   private toGithubRawUrl(url: string): string | null {
@@ -548,6 +608,14 @@ export class DataService implements OnDestroy {
     );
     const path = clean.replace(/^\/+/, '');
 
+    if (base.includes('firebasestorage.googleapis.com/v0/b/')) {
+      const [pathPart, queryPart] = path.split('?');
+      const encodedPath = pathPart.split('/').map(encodeURIComponent).join('%2F');
+      const sep = base.endsWith('%2F') ? '' : '%2F';
+      const querySuffix = queryPart ? `alt=media&${queryPart}` : 'alt=media';
+      return SecurityUtil.sanitizeCssUrl(`${base}${sep}${encodedPath}?${querySuffix}`);
+    }
+
     return SecurityUtil.sanitizeCssUrl(`${base}/${path}`);
   }
 
@@ -583,10 +651,17 @@ export class DataService implements OnDestroy {
   }
 
   private applyAndPublishConfig(config: AppConfig): void {
+    // Ensure active language is still enabled in remote supportedLanguages
+    const enabledLangs = (config.supportedLanguages || []).filter(l => l.isEnabled);
+    let lang = this.storageService.getCurrentLanguageSnapshot();
+    if (enabledLangs.length > 0 && !enabledLangs.some(l => l.code === lang)) {
+      lang = enabledLangs[0].code;
+      this.storageService.setLanguage(lang).catch(() => {});
+    }
+
     this.configSubject.next(config);
     this.themeService.applyAppIdentityTheme(config.app_identity);
 
-    const lang = this.storageService.getCurrentLanguageSnapshot();
     if (config.notification_schedules) {
       const primaryColor = config.app_identity?.theme?.primary || '#8B2635';
       this.notificationService
