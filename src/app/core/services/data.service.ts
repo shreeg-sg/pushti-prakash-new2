@@ -4,7 +4,8 @@ import { BehaviorSubject, Observable, Subscription, combineLatest, firstValueFro
 import { map, filter, catchError, distinctUntilChanged, timeout } from 'rxjs/operators';
 import { App, AppState } from '@capacitor/app';
 import { Preferences } from '@capacitor/preferences';
-import { PluginListenerHandle } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Capacitor, PluginListenerHandle } from '@capacitor/core';
 
 import { environment } from '../../../environments/environment';
 import {
@@ -35,6 +36,7 @@ export interface ChapterLoadedContent {
   transcript: Record<string, string>;
   images: string[];
   cachedDate?: string;
+  cachedVersion?: string;
 }
 
 export interface SyncResult {
@@ -57,11 +59,15 @@ export class DataService implements OnDestroy {
   private readonly CACHE_KEY = `app_manifest_${environment.clientKey}`;
   private readonly LAST_DAILY_SYNC_KEY = `app_last_daily_sync_${environment.clientKey}`;
   private readonly LAST_HOURLY_REFRESH_KEY = `app_last_hourly_refresh_${environment.clientKey}`;
+  private readonly ASSET_VERSION_KEY = `app_asset_version_${environment.clientKey}`;
   private readonly CHAPTER_CACHE_PREFIX = `app_chapter_${environment.clientKey}_`;
 
-  // 1 hour cooldown (in milliseconds) for manual swipe-down hard refresh
+  // 1 hour cooldown (in milliseconds) for manual swipe-down hard refresh based on system clock
   private readonly HOURLY_COOLDOWN_MS = 60 * 60 * 1000;
   private readonly SAFE_ID_REGEX = /^[a-zA-Z0-9_-]+$/;
+
+  // Tracks the latest hard-refresh version across the entire src/assets/ folder (mock, chapters, images, audio)
+  private assetVersion: string = this.getLocalDateString();
 
   private configSubject = new BehaviorSubject<AppConfig | null>(null);
   public readonly config$: Observable<AppConfig> = this.configSubject.asObservable().pipe(
@@ -203,6 +209,11 @@ export class DataService implements OnDestroy {
   );
 
   public async initialize(): Promise<void> {
+    const { value: savedAssetVer } = await Preferences.get({ key: this.ASSET_VERSION_KEY });
+    if (savedAssetVer) {
+      this.assetVersion = savedAssetVer;
+    }
+
     const cachedConfig = await this.loadCachedConfig();
     if (cachedConfig) {
       this.applyAndPublishConfig(cachedConfig);
@@ -238,13 +249,15 @@ export class DataService implements OnDestroy {
 
   /**
    * - When force === false (app start / resume):
-   *   Performs a hard refresh ONLY once per day when the calendar date changes.
+   *   Performs a full hard refresh of the complete assets folder ONLY once per day
+   *   on the 1st start when the system calendar date changes.
    * - When force === true (user swipes down on Dashboard):
-   *   Performs a hard refresh at most ONCE per hour. If swiped again within the
-   *   same 1-hour window, returns { success: true, isUpdated: false, isThrottled: true }.
+   *   Performs a full hard refresh of the complete assets folder at most ONCE per hour
+   *   based on normal system time (Date.now()).
    */
   public async syncIfDueToday(force = false): Promise<SyncResult> {
     const today = this.getLocalDateString();
+    const now = Date.now();
     const { value: lastSyncDate } = await Preferences.get({ key: this.LAST_DAILY_SYNC_KEY });
     const { value: cachedData } = await Preferences.get({ key: this.CACHE_KEY });
 
@@ -253,20 +266,29 @@ export class DataService implements OnDestroy {
         return { success: true, message: 'Already updated today', isUpdated: false, isThrottled: false };
       }
 
-      // First launch on a new date -> execute hard refresh
+      // First launch on a new calendar date -> execute full hard refresh of all assets
       const dailyResult = await this.syncWithRemote(true);
       if (dailyResult.success) {
         await Preferences.set({ key: this.LAST_DAILY_SYNC_KEY, value: today });
+      } else if (this.configSubject.value) {
+        // Re-evaluate date-based notification banners against the new calendar date even if offline
+        this.configSubject.next({ ...this.configSubject.value });
       }
       return dailyResult;
     }
 
-    // Manual swipe-down refresh (force === true): enforce 1-hour maximum cooldown
+    // Manual swipe-down refresh (force === true): enforce 1-hour cooldown on normal system time
     const { value: lastHourlyStr } = await Preferences.get({ key: this.LAST_HOURLY_REFRESH_KEY });
     const lastHourlyTs = lastHourlyStr ? Number(lastHourlyStr) : 0;
-    const now = Date.now();
 
-    if (!!cachedData && lastHourlyTs > 0 && now - lastHourlyTs < this.HOURLY_COOLDOWN_MS) {
+    // Guard `now >= lastHourlyTs` ensures that if system clock was moved forward during testing
+    // and then restored to normal time, the cooldown does not lock out refresh for hours.
+    if (
+      !!cachedData &&
+      lastHourlyTs > 0 &&
+      now >= lastHourlyTs &&
+      now - lastHourlyTs < this.HOURLY_COOLDOWN_MS
+    ) {
       return {
         success: true,
         message: 'Already up to date',
@@ -283,6 +305,13 @@ export class DataService implements OnDestroy {
     return manualResult;
   }
 
+  /**
+   * Synchronizes the complete remote `src/assets/` folder:
+   * - All 7 config manifests in `src/assets/mock/`
+   * - All chapter transcripts & chapter images in `src/assets/mock/chapters/`
+   * - All brand logos, watermarks & book cover images in `src/assets/images/`
+   * - All recorded MP3 audio tracks in `src/assets/audio/`
+   */
   public async syncWithRemote(forceRefresh = false): Promise<SyncResult> {
     try {
       const endpoint = environment.firebaseConfigUrl;
@@ -295,8 +324,13 @@ export class DataService implements OnDestroy {
         baseDir = `${baseDir}/`;
       }
 
+      const refreshStamp = String(Date.now());
       const dailyKey = this.getLocalDateString();
-      const cb = forceRefresh ? `_cb=${Date.now()}` : `_v=${dailyKey}`;
+      const cb = forceRefresh ? `_cb=${refreshStamp}` : `_v=${dailyKey}`;
+
+      if (forceRefresh) {
+        this.purgeJsDelivrAssetsCache(baseDir).catch(() => {});
+      }
 
       // Preserve existing cached/bundled sections if any individual secondary JSON fails to load
       const existing = this.configSubject.value || (await this.loadBundledFallbackConfig());
@@ -345,7 +379,7 @@ export class DataService implements OnDestroy {
 
       const constructedConfig: AppConfig = {
         schemaVersion: 1,
-        lastUpdatedIso: this.getLocalDateString(),
+        lastUpdatedIso: refreshStamp,
         app_identity: identity,
         supportedLanguages: Array.isArray(languages) && languages.length > 0 ? languages : (existing?.supportedLanguages || []),
         ui_translations: ui && typeof ui === 'object' && !Array.isArray(ui) && Object.keys(ui).length > 0
@@ -362,16 +396,20 @@ export class DataService implements OnDestroy {
       const isUpdated = this.hasConfigChanged(this.configSubject.value, constructedConfig);
 
       if (forceRefresh || isUpdated || !this.configSubject.value) {
+        // Bump asset version so the entire src/assets/ folder (chapters, images, audio) refreshes
+        this.assetVersion = refreshStamp;
+        await Preferences.set({ key: this.ASSET_VERSION_KEY, value: this.assetVersion });
+
         this.chapterContentCache.clear();
-        if (isUpdated) {
-          await this.clearDiskChapterCache();
-        }
+        await this.clearDiskChapterCache();
+        await this.clearDiskAudioCache();
+
         await this.saveCachedConfig(constructedConfig);
         this.applyAndPublishConfig(constructedConfig);
         return {
           success: true,
-          message: isUpdated ? 'Updated from remote' : 'Already up to date',
-          isUpdated,
+          message: 'Updated from remote',
+          isUpdated: true,
           isThrottled: false
         };
       }
@@ -391,8 +429,8 @@ export class DataService implements OnDestroy {
 
   /**
    * Standard CORS Simple GET request (no custom headers that trigger OPTIONS preflight failures).
-   * When forceRefresh is true, checks raw.githubusercontent.com first (with a 4s timeout) for
-   * immediate Git commit freshness and falls back to cdn.jsdelivr.net.
+   * When forceRefresh is true, checks raw.githubusercontent.com first (with a 6s timeout) for
+   * immediate Git commit freshness across all assets and falls back to cdn.jsdelivr.net.
    */
   private fetchRemoteJson<T>(url: string, cb: string, forceRefresh: boolean, fallbackValue: T): Promise<T> {
     const sep = url.includes('?') ? '&' : '?';
@@ -403,7 +441,7 @@ export class DataService implements OnDestroy {
         const rawSep = rawUrl.includes('?') ? '&' : '?';
         return firstValueFrom(
           this.http.get<T>(`${rawUrl}${rawSep}${cb}`).pipe(
-            timeout(4000),
+            timeout(6000),
             catchError(() =>
               this.http.get<T>(primaryUrl).pipe(
                 timeout(6000),
@@ -418,6 +456,25 @@ export class DataService implements OnDestroy {
       this.http.get<T>(primaryUrl).pipe(
         timeout(6000),
         catchError(() => of(fallbackValue))
+      )
+    );
+  }
+
+  private async purgeJsDelivrAssetsCache(baseDir: string): Promise<void> {
+    if (!baseDir.startsWith('https://cdn.jsdelivr.net/gh/')) return;
+    const purgeBase = baseDir.replace('https://cdn.jsdelivr.net/gh/', 'https://purge.jsdelivr.net/gh/');
+    const files = [
+      'app_identity.json',
+      'supportedLanguages.json',
+      'ui_translations.json',
+      'books.json',
+      'updateBannerMessage.json',
+      'about_info.json',
+      'notification_schedules.json'
+    ];
+    await Promise.all(
+      files.map(f =>
+        firstValueFrom(this.http.get(`${purgeBase}${f}`).pipe(timeout(3000), catchError(() => of(null))))
       )
     );
   }
@@ -451,6 +508,17 @@ export class DataService implements OnDestroy {
       const { keys } = await Preferences.keys();
       const chapterKeys = (keys || []).filter(k => k.startsWith(this.CHAPTER_CACHE_PREFIX));
       await Promise.all(chapterKeys.map(key => Preferences.remove({ key })));
+    } catch {}
+  }
+
+  private async clearDiskAudioCache(): Promise<void> {
+    if (!Capacitor.isNativePlatform()) return;
+    try {
+      const dir = await Filesystem.readdir({ path: 'audio_cache', directory: Directory.Data });
+      for (const file of dir.files) {
+        const name = typeof file === 'string' ? file : file.name;
+        await Filesystem.deleteFile({ path: `audio_cache/${name}`, directory: Directory.Data }).catch(() => {});
+      }
     } catch {}
   }
 
@@ -497,7 +565,11 @@ export class DataService implements OnDestroy {
 
     if (!forceRefresh && this.chapterContentCache.has(cacheKey)) {
       const cached = this.chapterContentCache.get(cacheKey)!;
-      if (Object.keys(cached.transcript).length > 0 && cached.cachedDate === dailyKey) {
+      if (
+        Object.keys(cached.transcript).length > 0 &&
+        cached.cachedDate === dailyKey &&
+        cached.cachedVersion === this.assetVersion
+      ) {
         return cached;
       }
     }
@@ -511,8 +583,17 @@ export class DataService implements OnDestroy {
           const transcript = parsed.transcript || (parsed.hi || parsed.gu || parsed.en ? parsed : {});
           if (Object.keys(transcript).length > 0) {
             const images = Array.isArray(parsed.images) ? parsed.images : (chapter.images || []);
-            diskFallback = { transcript, images, cachedDate: parsed.cachedDate };
-            if (!forceRefresh && parsed.cachedDate === dailyKey) {
+            diskFallback = {
+              transcript,
+              images,
+              cachedDate: parsed.cachedDate,
+              cachedVersion: parsed.cachedVersion
+            };
+            if (
+              !forceRefresh &&
+              parsed.cachedDate === dailyKey &&
+              parsed.cachedVersion === this.assetVersion
+            ) {
               this.chapterContentCache.set(cacheKey, diskFallback);
               return diskFallback;
             }
@@ -526,14 +607,18 @@ export class DataService implements OnDestroy {
       relativePath = `mock/${relativePath}`;
     }
 
-    const targetUrl = this.resolveMediaUrl(relativePath);
+    const targetUrl = this.resolveMediaUrl(relativePath, false);
     if (!targetUrl) {
       return diskFallback || { transcript: {}, images: chapter.images || [] };
     }
 
+    // Whenever disk cache was cleared by a hard refresh (1st daily launch or hourly pull-to-refresh),
+    // fetch fresh from raw.githubusercontent.com first so stale CDN edge cache is bypassed.
+    const shouldBustCdn = forceRefresh || !diskFallback || diskFallback.cachedVersion !== this.assetVersion;
+
     try {
-      const cb = forceRefresh ? `_cb=${Date.now()}` : `_v=${dailyKey}`;
-      const res = await this.fetchRemoteJson<any>(targetUrl, cb, forceRefresh, null);
+      const cb = `_cb=${forceRefresh ? Date.now() : this.assetVersion}`;
+      const res = await this.fetchRemoteJson<any>(targetUrl, cb, shouldBustCdn, null);
       if (!res) {
         throw new Error('Empty chapter response');
       }
@@ -552,7 +637,8 @@ export class DataService implements OnDestroy {
       const contentPayload: ChapterLoadedContent = {
         transcript: transcriptMap,
         images: imagesList,
-        cachedDate: dailyKey
+        cachedDate: dailyKey,
+        cachedVersion: this.assetVersion
       };
 
       if (Object.keys(transcriptMap).length > 0) {
@@ -579,7 +665,7 @@ export class DataService implements OnDestroy {
     return content.transcript;
   }
 
-  public resolveMediaUrl(urlOrPath: string | undefined): string {
+  public resolveMediaUrl(urlOrPath: string | undefined, appendAssetVersion = true): string {
     if (!urlOrPath) return '';
     const clean = urlOrPath.trim();
 
@@ -612,11 +698,20 @@ export class DataService implements OnDestroy {
       const [pathPart, queryPart] = path.split('?');
       const encodedPath = pathPart.split('/').map(encodeURIComponent).join('%2F');
       const sep = base.endsWith('%2F') ? '' : '%2F';
-      const querySuffix = queryPart ? `alt=media&${queryPart}` : 'alt=media';
-      return SecurityUtil.sanitizeCssUrl(`${base}${sep}${encodedPath}?${querySuffix}`);
+      const baseQuery = queryPart ? `alt=media&${queryPart}` : 'alt=media';
+      const versionedQuery = appendAssetVersion && this.assetVersion
+        ? `${baseQuery}&v=${this.assetVersion}`
+        : baseQuery;
+      return SecurityUtil.sanitizeCssUrl(`${base}${sep}${encodedPath}?${versionedQuery}`);
     }
 
-    return SecurityUtil.sanitizeCssUrl(`${base}/${path}`);
+    const fullUrl = `${base}/${path}`;
+    if (!appendAssetVersion || !this.assetVersion) {
+      return SecurityUtil.sanitizeCssUrl(fullUrl);
+    }
+
+    const sep = fullUrl.includes('?') ? '&' : '?';
+    return SecurityUtil.sanitizeCssUrl(`${fullUrl}${sep}v=${this.assetVersion}`);
   }
 
   private normalizeToActiveCdn(url: string): string {
