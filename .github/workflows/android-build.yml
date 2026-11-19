@@ -109,7 +109,7 @@ jobs:
           fi
           npx cap sync android
           python3 -c "
-          import os, re
+          import os, re, glob
           app_name = os.environ.get('APP_NAME', 'PushtiPrakash')
           app_id = os.environ.get('APP_ID', 'com.pushtiprakash.reader')
 
@@ -143,6 +143,21 @@ jobs:
                   mcontent = mcontent.replace('</manifest>', '\n'.join(missing_tags) + '\n</manifest>')
                   with open(manifest_path, 'w', encoding='utf-8') as f:
                       f.write(mcontent)
+
+          for ma_path in glob.glob('android/app/src/main/java/**/MainActivity.java', recursive=True):
+              with open(ma_path, 'r', encoding='utf-8') as f:
+                  ma = f.read()
+              if 'FLAG_SECURE' not in ma:
+                  if 'import android.os.Bundle;' not in ma:
+                      ma = ma.replace('import com.getcapacitor.BridgeActivity;', 'import android.os.Bundle;\nimport android.view.WindowManager;\nimport com.getcapacitor.BridgeActivity;')
+                  elif 'import android.view.WindowManager;' not in ma:
+                      ma = ma.replace('import android.os.Bundle;', 'import android.os.Bundle;\nimport android.view.WindowManager;')
+                  if 'onCreate(' in ma:
+                      ma = re.sub(r'(super\.onCreate\([^)]*\);)', r'\1\n        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);', ma)
+                  else:
+                      ma = ma.replace('BridgeActivity {', 'BridgeActivity {\n    @Override\n    public void onCreate(Bundle savedInstanceState) {\n        super.onCreate(savedInstanceState);\n        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);\n    }\n')
+                  with open(ma_path, 'w', encoding='utf-8') as f:
+                      f.write(ma)
           "
 
       - name: Stamp Application ID, Version Code & Name in build.gradle
