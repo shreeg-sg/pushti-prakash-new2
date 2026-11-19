@@ -3,8 +3,6 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import {
   IonContent,
-  IonRefresher,
-  IonRefresherContent,
   IonList,
   IonItem,
   IonLabel,
@@ -35,8 +33,6 @@ interface ResolvedBookmarkView {
     CommonModule,
     HeaderComponent,
     IonContent,
-    IonRefresher,
-    IonRefresherContent,
     IonList,
     IonItem,
     IonLabel,
@@ -53,10 +49,6 @@ interface ResolvedBookmarkView {
         [style.backgroundImage]="'url(' + wmUrl + ')'"
         aria-hidden="true">
       </div>
-
-      <ion-refresher slot="fixed" (ionRefresh)="onPullRefresh($event)">
-        <ion-refresher-content></ion-refresher-content>
-      </ion-refresher>
 
       <ng-container *ngIf="resolvedBookmarks$ | async as items">
         <!-- Empty State -->
@@ -200,11 +192,6 @@ export class BookmarksPage implements OnInit {
         return result;
       })
     );
-  }
-
-  public async onPullRefresh(event: CustomEvent): Promise<void> {
-    await this.dataService.syncIfDueToday(true);
-    (event.target as HTMLIonRefresherElement).complete();
   }
 
   public openBookmark(bookId: string, chapterId: string): void {
