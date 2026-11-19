@@ -128,6 +128,22 @@ jobs:
               fs.writeFileSync(pbxPath, pbx, "utf8");
             }
           '
+          python3 -c "
+          import os, re
+          app_del = 'ios/App/App/AppDelegate.swift'
+          if os.path.exists(app_del):
+              with open(app_del, 'r', encoding='utf-8') as f:
+                  swift = f.read()
+              if 'enableScreenCaptureProtection' not in swift:
+                  swift = swift.replace('var window: UIWindow?', 'var window: UIWindow?\n    private var secureField: UITextField?', 1)
+                  swift = swift.replace('return true', 'enableScreenCaptureProtection()\n        return true', 1)
+                  helper = '\n    private func enableScreenCaptureProtection() {\n        guard let win = self.window else { return }\n        if secureField == nil {\n            let field = UITextField()\n            field.isSecureTextEntry = true\n            win.addSubview(field)\n            win.layer.superlayer?.addSublayer(field.layer)\n            field.layer.sublayers?.last?.addSublayer(win.layer)\n            secureField = field\n        }\n        NotificationCenter.default.addObserver(forName: UIScreen.capturedDidChangeNotification, object: nil, queue: .main) { [weak win] _ in\n            win?.isHidden = UIScreen.main.isCaptured\n        }\n        win.isHidden = UIScreen.main.isCaptured\n    }\n'
+                  idx = swift.rfind('}')
+                  if idx != -1:
+                      swift = swift[:idx] + helper + swift[idx:]
+                  with open(app_del, 'w', encoding='utf-8') as f:
+                      f.write(swift)
+          " 
 
       - name: Stamp iOS App & Notification Icon from Client Logo
         env:
@@ -232,4 +248,5 @@ jobs:
           name: ${{ inputs.client_key }}-ios-xcarchive-v${{ inputs.build_version }}
           path: ios/App/build/App.xcarchive
           retention-days: 14
+
 
