@@ -1,8 +1,9 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import {
   IonContent,
+  IonFooter,
   IonRefresher,
   IonRefresherContent,
   IonGrid,
@@ -20,15 +21,18 @@ import {
   arrowForwardOutline,
   searchOutline,
   cloudOfflineOutline,
-  refreshOutline
+  refreshOutline,
+  chevronBackOutline,
+  chevronForwardOutline
 } from 'ionicons/icons';
 import { Observable, Subscription, BehaviorSubject, combineLatest, firstValueFrom } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { HeaderComponent } from '../../layout/header.component';
-import { DataService, ActiveBannerView } from '../../core/services/data.service';
+import { DataService, ActiveBannerView, ActiveAdView } from '../../core/services/data.service';
 import { StorageService } from '../../core/services/storage.service';
 import { Book } from '../../core/models/app-config.model';
+import { SecurityUtil } from '../../core/utils/security.util';
 
 @Component({
   selector: 'app-dashboard',
@@ -37,6 +41,7 @@ import { Book } from '../../core/models/app-config.model';
     CommonModule,
     HeaderComponent,
     IonContent,
+    IonFooter,
     IonRefresher,
     IonRefresherContent,
     IonGrid,
@@ -152,6 +157,55 @@ import { Book } from '../../core/models/app-config.model';
         </ion-row>
       </ion-grid>
     </ion-content>
+
+    <!-- Sticky 20% Bottom Advertisement Banner (Dashboard Only) -->
+    <ion-footer class="ion-no-border dashboard-ad-footer" *ngIf="activeAds.length > 0">
+      <div class="ad-banner-shell">
+        <button
+          type="button"
+          class="ad-nav-arrow ad-arrow-left"
+          *ngIf="activeAds.length > 1"
+          (click)="prevAd($event)"
+          aria-label="Previous Advertisement">
+          <ion-icon name="chevron-back-outline"></ion-icon>
+        </button>
+
+        <div
+          #adCarouselTrack
+          class="ad-carousel-track"
+          (scroll)="onAdCarouselScroll()">
+          <div
+            class="ad-slide-item"
+            *ngFor="let ad of activeAds; trackBy: trackByAdId"
+            (click)="onAdClick(ad)">
+            <img
+              [src]="ad.imageUrl"
+              [alt]="ad.name || 'Advertisement'"
+              class="ad-slide-img"
+              loading="lazy"
+              (error)="onAdImageError(ad.id)" />
+          </div>
+        </div>
+
+        <button
+          type="button"
+          class="ad-nav-arrow ad-arrow-right"
+          *ngIf="activeAds.length > 1"
+          (click)="nextAd($event)"
+          aria-label="Next Advertisement">
+          <ion-icon name="chevron-forward-outline"></ion-icon>
+        </button>
+
+        <div class="ad-dots-indicator" *ngIf="activeAds.length > 1">
+          <span
+            *ngFor="let ad of activeAds; let i = index; trackBy: trackByAdId"
+            class="ad-dot"
+            [class.active-dot]="i === currentAdIndex"
+            (click)="scrollToAd(i, $event)">
+          </span>
+        </div>
+      </div>
+    </ion-footer>
   `,
   styles: [`
     .dashboard-content {
@@ -420,9 +474,117 @@ import { Book } from '../../core/models/app-config.model';
       font-weight: 700;
       height: 44px;
     }
+
+    .dashboard-ad-footer {
+      background: var(--ion-card-background, #fff8ec);
+      border-top: 1px solid rgba(var(--ion-color-primary-rgb), 0.18);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      z-index: 20;
+    }
+
+    .ad-banner-shell {
+      position: relative;
+      width: 100%;
+      max-width: 960px;
+      height: 20vh;
+      min-height: 110px;
+      max-height: 180px;
+      margin: 0 auto;
+      overflow: hidden;
+      background: var(--ion-card-background, #fff8ec);
+    }
+
+    .ad-carousel-track {
+      display: flex;
+      width: 100%;
+      height: 100%;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      scroll-behavior: smooth;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+
+      &::-webkit-scrollbar {
+        display: none;
+      }
+    }
+
+    .ad-slide-item {
+      flex: 0 0 100%;
+      width: 100%;
+      height: 100%;
+      scroll-snap-align: start;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .ad-slide-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .ad-nav-arrow {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 5;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0, 0, 0, 0.42);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      font-size: 1.1rem;
+    }
+
+    .ad-arrow-left {
+      left: 8px;
+    }
+
+    .ad-arrow-right {
+      right: 8px;
+    }
+
+    .ad-dots-indicator {
+      position: absolute;
+      bottom: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 6px;
+      z-index: 5;
+      background: rgba(0, 0, 0, 0.28);
+      padding: 3px 8px;
+      border-radius: 10px;
+    }
+
+    .ad-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.55);
+      cursor: pointer;
+      transition: background-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .ad-dot.active-dot {
+      background: #ffffff;
+      transform: scale(1.2);
+    }
   `]
 })
 export class DashboardPage implements OnInit, OnDestroy {
+  @ViewChild('adCarouselTrack') adCarouselTrack?: ElementRef<HTMLDivElement>;
+
   private router = inject(Router);
   public dataService = inject(DataService);
   private storageService = inject(StorageService);
@@ -432,6 +594,11 @@ export class DashboardPage implements OnInit, OnDestroy {
   public activeBanners$: Observable<ActiveBannerView[]> = this.dataService.activeBanners$;
   public watermarkUrl$: Observable<string> = this.dataService.watermarkUrl$;
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
+
+  public activeAds: ActiveAdView[] = [];
+  public currentAdIndex = 0;
+  private adAutoScrollTimer: any = null;
+  private adsSub?: Subscription;
 
   private currentLang = 'hi';
   private uiTextSnapshot: Record<string, string> = {};
@@ -471,7 +638,9 @@ export class DashboardPage implements OnInit, OnDestroy {
       arrowForwardOutline,
       searchOutline,
       cloudOfflineOutline,
-      refreshOutline
+      refreshOutline,
+      chevronBackOutline,
+      chevronForwardOutline
     });
   }
 
@@ -481,6 +650,11 @@ export class DashboardPage implements OnInit, OnDestroy {
     });
     this.uiSub = this.dataService.uiText$.subscribe(ui => {
       this.uiTextSnapshot = ui || {};
+    });
+    this.adsSub = this.dataService.activeAds$.subscribe(ads => {
+      this.activeAds = ads || [];
+      this.currentAdIndex = 0;
+      this.restartAdAutoScroll();
     });
   }
 
@@ -496,6 +670,77 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   public trackByBannerId(_index: number, banner: ActiveBannerView): string {
     return banner.id;
+  }
+
+  public trackByAdId(_index: number, ad: ActiveAdView): string {
+    return ad.id;
+  }
+
+  public onAdClick(ad: ActiveAdView): void {
+    const safeUrl = SecurityUtil.sanitizeExternalUrl(ad?.url);
+    if (!safeUrl) return;
+    window.open(safeUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  public onAdImageError(adId: string): void {
+    this.activeAds = this.activeAds.filter(a => a.id !== adId);
+    if (this.currentAdIndex >= this.activeAds.length) {
+      this.currentAdIndex = 0;
+    }
+    this.restartAdAutoScroll();
+  }
+
+  public prevAd(event: Event): void {
+    event.stopPropagation();
+    if (this.activeAds.length <= 1) return;
+    const prevIdx = (this.currentAdIndex - 1 + this.activeAds.length) % this.activeAds.length;
+    this.scrollToAd(prevIdx);
+  }
+
+  public nextAd(event: Event): void {
+    event.stopPropagation();
+    if (this.activeAds.length <= 1) return;
+    const nextIdx = (this.currentAdIndex + 1) % this.activeAds.length;
+    this.scrollToAd(nextIdx);
+  }
+
+  public scrollToAd(index: number, event?: Event): void {
+    event?.stopPropagation();
+    if (index < 0 || index >= this.activeAds.length) return;
+    this.currentAdIndex = index;
+    const el = this.adCarouselTrack?.nativeElement;
+    if (el) {
+      el.scrollTo({ left: index * el.clientWidth, behavior: 'smooth' });
+    }
+    this.restartAdAutoScroll();
+  }
+
+  public onAdCarouselScroll(): void {
+    const el = this.adCarouselTrack?.nativeElement;
+    if (!el || el.clientWidth <= 0) return;
+    const idx = Math.round(el.scrollLeft / el.clientWidth);
+    if (idx >= 0 && idx < this.activeAds.length && idx !== this.currentAdIndex) {
+      this.currentAdIndex = idx;
+      this.restartAdAutoScroll();
+    }
+  }
+
+  private restartAdAutoScroll(): void {
+    if (this.adAutoScrollTimer) {
+      clearInterval(this.adAutoScrollTimer);
+      this.adAutoScrollTimer = null;
+    }
+    if (this.activeAds.length <= 1) return;
+    const intervalMs = this.activeAds[0]?.intervalMs || 7000;
+    this.adAutoScrollTimer = setInterval(() => {
+      if (this.activeAds.length <= 1) return;
+      const nextIdx = (this.currentAdIndex + 1) % this.activeAds.length;
+      this.currentAdIndex = nextIdx;
+      const el = this.adCarouselTrack?.nativeElement;
+      if (el) {
+        el.scrollTo({ left: nextIdx * el.clientWidth, behavior: 'smooth' });
+      }
+    }, intervalMs);
   }
 
   public onSearchQueryChange(query: string): void {
@@ -594,5 +839,10 @@ export class DashboardPage implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.langSub?.unsubscribe();
     this.uiSub?.unsubscribe();
+    this.adsSub?.unsubscribe();
+    if (this.adAutoScrollTimer) {
+      clearInterval(this.adAutoScrollTimer);
+      this.adAutoScrollTimer = null;
+    }
   }
 }
