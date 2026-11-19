@@ -32,6 +32,14 @@ export interface ActiveBannerView {
   actionLabel?: string;
 }
 
+export interface ActiveAdView {
+  id: string;
+  name: string;
+  url: string;
+  imageUrl: string;
+  intervalMs: number;
+}
+
 export interface ChapterLoadedContent {
   transcript: Record<string, string>;
   images: string[];
@@ -92,9 +100,67 @@ export class DataService implements OnDestroy {
     })
   );
 
+  public readonly activeAds$: Observable<ActiveAdView[]> = this.config$.pipe(
+    map((cfg: AppConfig) => this.resolveAllEligibleAds(cfg?.advertisements))
+  );
+
   public readonly updateBanner$: Observable<string | null> = this.activeBanners$.pipe(
     map(banners => (banners.length > 0 ? banners[0].messageHtml : null))
   );
+
+  public resolveAllEligibleAds(adData: any): ActiveAdView[] {
+    if (!adData) return [];
+
+    const today = this.getLocalDateString();
+    const rawList: any[] = Array.isArray(adData)
+      ? adData
+      : (typeof adData === 'object' ? [adData] : []);
+
+    const sorted = [...rawList].sort((a, b) => (Number(a?.order) || 0) - (Number(b?.order) || 0));
+    const results: ActiveAdView[] = [];
+    let counter = 1;
+
+    for (const item of sorted) {
+      if (!item || typeof item !== 'object' || item.isEnabled !== true) continue;
+
+      const from = (item.fromDate || item.from_date || item.startDate || '').toString().trim();
+      const to = (item.toDate || item.to_date || item.endDate || '').toString().trim();
+      if (from && today < from) continue;
+      if (to && today > to) continue;
+
+      const rawImg = typeof item.image === 'string' ? item.image.trim() : '';
+      if (!rawImg) continue;
+
+      let adImgPath = rawImg;
+      if (
+        !rawImg.startsWith('http://') &&
+        !rawImg.startsWith('https://') &&
+        !rawImg.startsWith('data:image/')
+      ) {
+        adImgPath = rawImg.replace(/^\/+/, '').replace(/^src\/assets\//i, '');
+        if (!adImgPath.startsWith('image/advertisement/') && !adImgPath.startsWith('images/advertisement/')) {
+          adImgPath = `image/advertisement/${adImgPath}`;
+        }
+      }
+
+      const resolvedImgUrl = this.resolveMediaUrl(adImgPath);
+      if (!resolvedImgUrl) continue;
+
+      const safeTargetUrl = SecurityUtil.sanitizeExternalUrl(item.url);
+      const sec = Number(item.intervalSeconds);
+      const clampedSec = !isNaN(sec) && sec > 0 ? Math.min(10, Math.max(5, sec)) : 7;
+
+      results.push({
+        id: item.id ? String(item.id) : `ad_${counter++}`,
+        name: typeof item.name === 'string' ? item.name.trim() : 'Advertisement',
+        url: safeTargetUrl,
+        imageUrl: resolvedImgUrl,
+        intervalMs: clampedSec * 1000
+      });
+    }
+
+    return results;
+  }
 
   public resolveAllEligibleBanners(bannerData: any, lang: string): ActiveBannerView[] {
     if (!bannerData) return [];
@@ -303,9 +369,9 @@ export class DataService implements OnDestroy {
 
   /**
    * Synchronizes the complete remote `src/assets/` folder:
-   * - All 7 config manifests in `src/assets/mock/`
+   * - All config manifests in `src/assets/mock/` (including `advertisement.json`)
    * - All chapter transcripts & chapter images in `src/assets/mock/chapters/`
-   * - All brand logos, watermarks & book cover images in `src/assets/images/`
+   * - All brand logos, watermarks, book covers & ad images in `src/assets/images/` & `src/assets/image/advertisement/`
    * - All recorded MP3 audio tracks in `src/assets/audio/`
    */
   public async syncWithRemote(forceRefresh = false): Promise<SyncResult> {
@@ -331,7 +397,7 @@ export class DataService implements OnDestroy {
       // Preserve existing cached/bundled sections if any individual secondary JSON fails to load
       const existing = this.configSubject.value || (await this.loadBundledFallbackConfig());
 
-      const [identity, languages, ui, books, banner, about, schedules] = await Promise.all([
+      const [identity, languages, ui, books, banner, about, schedules, advertisements] = await Promise.all([
         this.fetchRemoteJson<AppIdentity | null>(this.buildProviderFileUrl(baseDir, 'app_identity.json'), cb, forceRefresh, null),
         this.fetchRemoteJson<SupportedLanguage[]>(
           this.buildProviderFileUrl(baseDir, 'supportedLanguages.json'),
@@ -363,6 +429,12 @@ export class DataService implements OnDestroy {
           cb,
           forceRefresh,
           existing?.notification_schedules || []
+        ),
+        this.fetchRemoteJson<any>(
+          this.buildProviderFileUrl(baseDir, 'advertisement.json'),
+          cb,
+          forceRefresh,
+          []
         )
       ]);
 
@@ -383,6 +455,7 @@ export class DataService implements OnDestroy {
           : (existing?.ui_translations || {}),
         books: books,
         updateBannerMessage: banner,
+        advertisements: advertisements,
         about_info: about,
         notification_schedules: Array.isArray(schedules) && schedules.length > 0
           ? schedules
@@ -392,7 +465,7 @@ export class DataService implements OnDestroy {
       const isUpdated = this.hasConfigChanged(this.configSubject.value, constructedConfig);
 
       if (forceRefresh || isUpdated || !this.configSubject.value) {
-        // Bump asset version so the entire src/assets/ folder (chapters, images, audio) refreshes
+        // Bump asset version so the entire src/assets/ folder (chapters, images, audio, ads) refreshes
         this.assetVersion = refreshStamp;
         await Preferences.set({ key: this.ASSET_VERSION_KEY, value: this.assetVersion });
 
@@ -466,7 +539,8 @@ export class DataService implements OnDestroy {
       'books.json',
       'updateBannerMessage.json',
       'about_info.json',
-      'notification_schedules.json'
+      'notification_schedules.json',
+      'advertisement.json'
     ];
     await Promise.all(
       files.map(f =>
@@ -525,14 +599,15 @@ export class DataService implements OnDestroy {
         baseDir = `${baseDir}/`;
       }
 
-      const [identity, languages, ui, books, banner, about, schedules] = await Promise.all([
+      const [identity, languages, ui, books, banner, about, schedules, advertisements] = await Promise.all([
         firstValueFrom(this.http.get<AppIdentity>(`${baseDir}app_identity.json`).pipe(catchError(() => of(null)))),
         firstValueFrom(this.http.get<SupportedLanguage[]>(`${baseDir}supportedLanguages.json`).pipe(catchError(() => of([])))),
         firstValueFrom(this.http.get<UiTranslations>(`${baseDir}ui_translations.json`).pipe(catchError(() => of({})))),
         firstValueFrom(this.http.get<Book[]>(`${baseDir}books.json`).pipe(catchError(() => of([])))),
         firstValueFrom(this.http.get<any>(`${baseDir}updateBannerMessage.json`).pipe(catchError(() => of([])))),
         firstValueFrom(this.http.get<AboutInfo>(`${baseDir}about_info.json`).pipe(catchError(() => of({ description: {}, feedback_links: {} })))),
-        firstValueFrom(this.http.get<NotificationSchedule[]>(`${baseDir}notification_schedules.json`).pipe(catchError(() => of([]))))
+        firstValueFrom(this.http.get<NotificationSchedule[]>(`${baseDir}notification_schedules.json`).pipe(catchError(() => of([])))),
+        firstValueFrom(this.http.get<any>(`${baseDir}advertisement.json`).pipe(catchError(() => of([]))))
       ]);
 
       if (!identity || typeof identity !== 'object' || !Array.isArray(books) || books.length === 0) {
@@ -547,6 +622,7 @@ export class DataService implements OnDestroy {
         ui_translations: ui && typeof ui === 'object' && !Array.isArray(ui) ? (ui as UiTranslations) : {},
         books: books,
         updateBannerMessage: banner,
+        advertisements: advertisements,
         about_info: about,
         notification_schedules: Array.isArray(schedules) ? schedules : []
       };
