@@ -102,10 +102,23 @@ export interface BannerItem {
   actionLabel?: LocalizedStringMap; // NEW: Button text e.g. "Read Now" / "पढ़ें"
 }
 
+export interface AdvertisementItem {
+  id: string;
+  name?: string;
+  url: string;
+  image: string;
+  fromDate?: string; // YYYY-MM-DD
+  toDate?: string; // YYYY-MM-DD
+  isEnabled: boolean;
+  order?: number;
+  intervalSeconds?: number; // Optional auto-scroll interval (clamped 5-10s, default 7s)
+}
+
 export interface AppConfigPayload {
   schemaVersion: number;
   lastUpdatedIso: string;
   updateBannerMessage?: LocalizedStringMap | BannerItem[] | any;
+  advertisements?: AdvertisementItem[] | AdvertisementItem | any;
   app_identity: AppIdentity;
   supportedLanguages: SupportedLanguage[];
   ui_translations: UiTranslations;
