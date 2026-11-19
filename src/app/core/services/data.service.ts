@@ -100,15 +100,14 @@ export class DataService implements OnDestroy {
     if (!bannerData) return [];
 
     const today = this.getLocalDateString();
-    const specificEligibleItems: any[] = [];
-    const defaultEligibleItems: any[] = [];
+    const rawEligibleItems: any[] = [];
 
     if (Array.isArray(bannerData)) {
       for (const item of bannerData) {
         if (!item || item.isEnabled === false) continue;
 
         if (item.date && item.date === today) {
-          specificEligibleItems.push(item);
+          rawEligibleItems.push(item);
           continue;
         }
 
@@ -118,27 +117,24 @@ export class DataService implements OnDestroy {
           const isAfterStart = !start || today >= start;
           const isBeforeEnd = !end || today <= end;
           if (isAfterStart && isBeforeEnd) {
-            specificEligibleItems.push(item);
+            rawEligibleItems.push(item);
             continue;
           }
         }
 
         if (item.isDefault || item.date === 'default') {
-          defaultEligibleItems.push(item);
+          rawEligibleItems.push(item);
         }
       }
     } else if (typeof bannerData === 'object') {
       if (bannerData[today]) {
-        specificEligibleItems.push({ message: bannerData[today] });
+        rawEligibleItems.push({ message: bannerData[today] });
       } else if (bannerData.default) {
-        defaultEligibleItems.push({ message: bannerData.default });
+        rawEligibleItems.push({ message: bannerData.default });
       } else {
-        defaultEligibleItems.push({ message: bannerData });
+        rawEligibleItems.push({ message: bannerData });
       }
     }
-
-    // Show specific-date or date-range notifications when active; fall back to default banner otherwise
-    const rawEligibleItems = specificEligibleItems.length > 0 ? specificEligibleItems : defaultEligibleItems;
 
     const results: ActiveBannerView[] = [];
     let counter = 1;
