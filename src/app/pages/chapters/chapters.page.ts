@@ -3,8 +3,6 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   IonContent,
-  IonRefresher,
-  IonRefresherContent,
   IonList,
   IonItem,
   IonLabel,
@@ -37,8 +35,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
     CommonModule,
     HeaderComponent,
     IonContent,
-    IonRefresher,
-    IonRefresherContent,
     IonList,
     IonItem,
     IonLabel,
@@ -56,10 +52,6 @@ import { Book, Chapter } from '../../core/models/app-config.model';
         [style.backgroundImage]="'url(' + wmUrl + ')'"
         aria-hidden="true">
       </div>
-
-      <ion-refresher slot="fixed" (ionRefresh)="onPullRefresh($event)">
-        <ion-refresher-content></ion-refresher-content>
-      </ion-refresher>
 
       <!-- Fallback when book is hidden or invalid -->
       <div class="no-chapters-hint" *ngIf="isBookUnavailable">
@@ -412,11 +404,6 @@ export class ChaptersPage implements OnInit, OnDestroy {
         this.activeBookTitle = '';
       }
     });
-  }
-
-  public async onPullRefresh(event: CustomEvent): Promise<void> {
-    await this.dataService.syncIfDueToday(true);
-    (event.target as HTMLIonRefresherElement).complete();
   }
 
   public get filteredChapters(): Chapter[] {
