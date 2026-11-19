@@ -3,8 +3,6 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   IonContent,
-  IonRefresher,
-  IonRefresherContent,
   IonButton,
   IonIcon,
   IonRange,
@@ -45,8 +43,6 @@ import { SecurityUtil } from '../../core/utils/security.util';
     CommonModule,
     HeaderComponent,
     IonContent,
-    IonRefresher,
-    IonRefresherContent,
     IonButton,
     IonIcon,
     IonRange,
@@ -77,10 +73,6 @@ import { SecurityUtil } from '../../core/utils/security.util';
         [style.backgroundImage]="'url(' + wmUrl + ')'"
         aria-hidden="true">
       </div>
-
-      <ion-refresher slot="fixed" (ionRefresh)="onPullRefresh($event)">
-        <ion-refresher-content></ion-refresher-content>
-      </ion-refresher>
 
       <!-- Graceful fallback when book/chapter is hidden or invalid -->
       <div class="transcript-error" *ngIf="isChapterUnavailable">
@@ -123,8 +115,13 @@ import { SecurityUtil } from '../../core/utils/security.util';
           </ion-button>
         </div>
 
-        <!-- Text Content -->
-        <div class="transcript-content" *ngIf="!isLoadingTranscript && transcriptParagraphs.length > 0">
+        <!-- Text Content (Selection, Copy & Context Menu Disabled) -->
+        <div
+          class="transcript-content"
+          *ngIf="!isLoadingTranscript && transcriptParagraphs.length > 0"
+          (contextmenu)="$event.preventDefault()"
+          (copy)="$event.preventDefault()"
+          (cut)="$event.preventDefault()">
           <p
             *ngFor="let paragraph of transcriptParagraphs; let idx = index"
             class="transcript-paragraph"
@@ -250,6 +247,11 @@ import { SecurityUtil } from '../../core/utils/security.util';
       padding-bottom: calc(270px + env(safe-area-inset-bottom, 0px));
       position: relative;
       z-index: 2;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
     }
 
     .book-breadcrumb {
@@ -344,7 +346,11 @@ import { SecurityUtil } from '../../core/utils/security.util';
       white-space: pre-line;
       transition: background-color 0.2s ease;
       background: transparent;
-      user-select: text;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
     }
 
     .active-tts-chunk {
@@ -637,12 +643,6 @@ export class ReaderPage implements OnInit, OnDestroy {
       },
       autoPlay
     );
-  }
-
-  public async onPullRefresh(event: CustomEvent): Promise<void> {
-    await this.dataService.syncIfDueToday(true);
-    await this.retryLoadTranscript(true);
-    (event.target as HTMLIonRefresherElement).complete();
   }
 
   public onImageLoadError(failedUrl: string): void {
