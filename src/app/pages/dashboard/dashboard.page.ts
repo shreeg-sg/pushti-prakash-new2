@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import {
   IonContent,
+  IonFooter,
   IonRefresher,
   IonRefresherContent,
   IonGrid,
@@ -16,8 +17,11 @@ import {
 import { addIcons } from 'ionicons';
 import {
   sparklesOutline,
+  megaphoneOutline,
   bookOutline,
   arrowForwardOutline,
+  chevronBackOutline,
+  chevronForwardOutline,
   searchOutline,
   cloudOfflineOutline,
   refreshOutline
@@ -28,7 +32,14 @@ import { map } from 'rxjs/operators';
 import { HeaderComponent } from '../../layout/header.component';
 import { DataService, ActiveBannerView } from '../../core/services/data.service';
 import { StorageService } from '../../core/services/storage.service';
-import { Book } from '../../core/models/app-config.model';
+import { SecurityUtil } from '../../core/utils/security.util';
+import { Book, AdvertisementItem } from '../../core/models/app-config.model';
+
+interface AdSlideView {
+  ad: AdvertisementItem;
+  src: string;
+  triedFallback: boolean;
+}
 
 @Component({
   selector: 'app-dashboard',
@@ -37,6 +48,7 @@ import { Book } from '../../core/models/app-config.model';
     CommonModule,
     HeaderComponent,
     IonContent,
+    IonFooter,
     IonRefresher,
     IonRefresherContent,
     IonGrid,
@@ -66,27 +78,37 @@ import { Book } from '../../core/models/app-config.model';
         <ion-refresher-content></ion-refresher-content>
       </ion-refresher>
 
-      <!-- Active Announcement Cards (Top-Line Aligned Icons & Badges) -->
-      <div class="notification-banner-container" *ngIf="(activeBanners$ | async) as banners">
-        <div
-          class="banner-item-card"
-          *ngFor="let banner of banners; trackBy: trackByBannerId"
-          [class.clickable-banner]="!!banner.targetBookId"
-          (click)="onBannerClick(banner)">
-          
-          <div class="banner-left-meta">
-            <ion-icon name="sparkles-outline" class="banner-icon"></ion-icon>
-            <span class="banner-new-badge" *ngIf="banner.isNew">NEW</span>
+      <!-- Single Consolidated Announcement Banner (Scrolls with Dashboard) -->
+      <ng-container *ngIf="(activeBanners$ | async) as banners">
+        <div class="announcement-banner-card" *ngIf="banners.length > 0">
+          <div class="announcement-header">
+            <ion-icon name="megaphone-outline" class="announcement-header-icon"></ion-icon>
+            <span class="announcement-heading-text">
+              {{ (uiText$ | async)?.['announcement_heading'] || 'Announcement' }}
+            </span>
           </div>
 
-          <span class="banner-text" [innerHTML]="banner.messageHtml"></span>
-
-          <div class="banner-action-chip" *ngIf="banner.targetBookId">
-            <span>{{ banner.actionLabel || (uiText$ | async)?.['read_now'] || 'Read Now' }}</span>
-            <ion-icon name="arrow-forward-outline"></ion-icon>
+          <div class="announcement-list">
+            <div
+              class="announcement-row"
+              *ngFor="let banner of banners; let last = last; trackBy: trackByBannerId"
+              [class.announcement-row-divider]="!last">
+              <span class="banner-new-badge" *ngIf="banner.isNew">NEW</span>
+              <span class="announcement-message-inline">
+                <span class="banner-text" [innerHTML]="banner.messageHtml"></span>
+                <button
+                  type="button"
+                  class="inline-read-now-btn"
+                  *ngIf="banner.targetBookId"
+                  (click)="onBannerClick(banner)">
+                  {{ banner.actionLabel || (uiText$ | async)?.['read_now'] || 'Read Now' }}
+                  <ion-icon name="arrow-forward-outline"></ion-icon>
+                </button>
+              </span>
+            </div>
           </div>
         </div>
-      </div>
+      </ng-container>
 
       <!-- Library Grid -->
       <ion-grid fixed class="books-grid">
@@ -152,6 +174,51 @@ import { Book } from '../../core/models/app-config.model';
         </ion-row>
       </ion-grid>
     </ion-content>
+
+    <!-- Sticky Bottom Advertisement Banner (Dashboard Only, 15-20% Screen Height) -->
+    <ion-footer class="ion-no-border ad-banner-footer" *ngIf="visibleAds.length > 0">
+      <div class="ad-carousel-shell" *ngIf="currentAdSlide as slide">
+        <div
+          class="ad-slide-clickable"
+          [class.has-link]="!!slide.ad.url"
+          (click)="onAdClick(slide.ad)">
+          <img
+            [src]="slide.src"
+            [alt]="slide.ad.uniqueName"
+            class="ad-banner-image"
+            (error)="onAdImageError(slide)" />
+        </div>
+
+        <!-- Manual Navigation Arrows (Shown only when multiple ads exist) -->
+        <button
+          *ngIf="visibleAds.length > 1"
+          type="button"
+          class="ad-nav-btn ad-nav-prev"
+          aria-label="Previous advertisement"
+          (click)="prevAd($event)">
+          <ion-icon name="chevron-back-outline"></ion-icon>
+        </button>
+
+        <button
+          *ngIf="visibleAds.length > 1"
+          type="button"
+          class="ad-nav-btn ad-nav-next"
+          aria-label="Next advertisement"
+          (click)="nextAd($event)">
+          <ion-icon name="chevron-forward-outline"></ion-icon>
+        </button>
+
+        <!-- Slide Indicator Dots -->
+        <div class="ad-dots-bar" *ngIf="visibleAds.length > 1">
+          <span
+            *ngFor="let item of visibleAds; let i = index; trackBy: trackByAdSlide"
+            class="ad-dot"
+            [class.active-dot]="i === currentAdIndex"
+            (click)="goToAd(i, $event)">
+          </span>
+        </div>
+      </div>
+    </ion-footer>
   `,
   styles: [`
     .dashboard-content {
@@ -159,105 +226,225 @@ import { Book } from '../../core/models/app-config.model';
       --background: var(--ion-background-color, #fffdf9);
     }
 
-    .notification-banner-container {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
+    /* Single Consolidated Announcement Banner */
+    .announcement-banner-card {
       margin: 0 auto 16px auto;
       max-width: 960px;
       width: 100%;
       position: relative;
       z-index: 2;
-    }
-
-    .banner-item-card {
-      display: flex;
-      align-items: flex-start;
-      flex-wrap: wrap;
-      gap: 10px 12px;
       background: var(--ion-card-background, #fff8ec);
       border: 1px solid rgba(var(--ion-color-primary-rgb), 0.22);
       border-left: 5px solid var(--ion-color-primary);
       border-radius: 14px;
-      padding: 12px 16px;
+      padding: 10px 14px 12px;
       color: var(--ion-text-color, #2c1810);
-      font-weight: 500;
-      font-size: 0.92rem;
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
       box-sizing: border-box;
-      transition: transform 0.18s ease;
     }
 
-    .banner-item-card.clickable-banner {
-      cursor: pointer;
-
-      &:active {
-        transform: scale(0.99);
-      }
-    }
-
-    .banner-left-meta {
-      display: inline-flex;
+    .announcement-header {
+      display: flex;
       align-items: center;
-      gap: 6px;
-      flex-shrink: 0;
-      margin-top: 2px;
+      gap: 7px;
+      padding-bottom: 7px;
+      margin-bottom: 7px;
+      border-bottom: 1px solid rgba(var(--ion-color-primary-rgb), 0.14);
     }
 
-    .banner-icon {
-      font-size: 1.2rem;
+    .announcement-header-icon {
+      font-size: 1.05rem;
+      color: var(--ion-color-primary);
+      flex-shrink: 0;
+    }
+
+    .announcement-heading-text {
+      font-size: 0.78rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
       color: var(--ion-color-primary);
     }
 
+    .announcement-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .announcement-row {
+      font-size: 0.88rem;
+      font-weight: 500;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .announcement-row-divider {
+      padding-bottom: 8px;
+      border-bottom: 1px dashed rgba(var(--ion-color-primary-rgb), 0.16);
+    }
+
     .banner-new-badge {
+      display: inline-block;
+      vertical-align: middle;
       background: var(--ion-color-primary, #8B2635);
       color: var(--ion-color-primary-contrast, #ffffff);
-      font-size: 0.68rem;
+      font-size: 0.64rem;
       font-weight: 800;
-      padding: 2px 6px;
-      border-radius: 6px;
+      padding: 1px 6px;
+      border-radius: 5px;
       letter-spacing: 0.4px;
       text-transform: uppercase;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+      margin-right: 6px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.12);
+    }
+
+    .announcement-message-inline {
+      display: inline;
     }
 
     .banner-text {
-      flex: 1 1 180px;
-      line-height: 1.48;
+      display: inline;
       white-space: pre-line;
       word-break: break-word;
     }
 
-    :host ::ng-deep .banner-text p,
+    :host ::ng-deep .banner-text p {
+      display: inline;
+      margin: 0;
+    }
+
     :host ::ng-deep .banner-text ul,
     :host ::ng-deep .banner-text ol {
-      margin: 0;
+      margin: 4px 0;
       padding-left: 18px;
     }
 
-    .banner-action-chip {
+    .inline-read-now-btn {
       display: inline-flex;
       align-items: center;
-      align-self: flex-start;
-      gap: 5px;
-      background: var(--ion-color-primary, #8B2635);
-      color: var(--ion-color-primary-contrast, #ffffff);
-      padding: 5px 12px;
-      border-radius: 14px;
+      gap: 3px;
+      vertical-align: baseline;
+      margin-left: 6px;
+      padding: 1px 8px;
+      border: none;
+      border-radius: 10px;
+      background: rgba(var(--ion-color-primary-rgb), 0.12);
+      color: var(--ion-color-primary);
       font-size: 0.8rem;
       font-weight: 700;
-      flex-shrink: 0;
-      margin-top: 1px;
-      transition: opacity 0.2s ease;
+      cursor: pointer;
       white-space: nowrap;
+      transition: background 0.18s ease, opacity 0.18s ease;
 
       &:active {
-        opacity: 0.8;
+        opacity: 0.75;
       }
 
       ion-icon {
-        font-size: 0.9rem;
+        font-size: 0.82rem;
       }
+    }
+
+    /* Sticky Bottom Advertisement Banner (15-20% Screen Height) */
+    .ad-banner-footer {
+      background: var(--ion-card-background, #fff8ec);
+      border-top: 1px solid rgba(var(--ion-color-primary-rgb), 0.18);
+      box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+      padding-bottom: var(--ion-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+      z-index: 10;
+    }
+
+    .ad-carousel-shell {
+      position: relative;
+      width: 100%;
+      height: 17vh;
+      min-height: 108px;
+      max-height: 168px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--ion-card-background, #fff8ec);
+    }
+
+    .ad-slide-clickable {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .ad-slide-clickable.has-link {
+      cursor: pointer;
+    }
+
+    .ad-banner-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .ad-nav-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0, 0, 0, 0.45);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      cursor: pointer;
+      z-index: 3;
+      padding: 0;
+      transition: background 0.2s ease;
+
+      &:active {
+        background: rgba(0, 0, 0, 0.7);
+      }
+    }
+
+    .ad-nav-prev {
+      left: 8px;
+    }
+
+    .ad-nav-next {
+      right: 8px;
+    }
+
+    .ad-dots-bar {
+      position: absolute;
+      bottom: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.35);
+      z-index: 3;
+    }
+
+    .ad-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.55);
+      cursor: pointer;
+      transition: transform 0.2s ease, background 0.2s ease;
+    }
+
+    .ad-dot.active-dot {
+      background: #ffffff;
+      transform: scale(1.25);
     }
 
     .watermark-overlay {
@@ -439,6 +626,18 @@ export class DashboardPage implements OnInit, OnDestroy {
   public isRetrying = false;
   private searchSubject = new BehaviorSubject<string>('');
 
+  // Sticky Advertisement Carousel State (Dashboard Only)
+  private readonly AD_ROTATION_INTERVAL_MS = 7000; // 7 seconds (within 5-10 sec requirement)
+  public visibleAds: AdSlideView[] = [];
+  public currentAdIndex = 0;
+  private adTimer: ReturnType<typeof setInterval> | null = null;
+
+  public get currentAdSlide(): AdSlideView | null {
+    if (this.visibleAds.length === 0) return null;
+    const safeIdx = this.currentAdIndex % this.visibleAds.length;
+    return this.visibleAds[safeIdx] || null;
+  }
+
   public filteredBooks$: Observable<Book[]> = combineLatest([
     this.dataService.visibleBooks$,
     this.searchSubject
@@ -463,12 +662,16 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   private langSub?: Subscription;
   private uiSub?: Subscription;
+  private adsSub?: Subscription;
 
   constructor() {
     addIcons({
       sparklesOutline,
+      megaphoneOutline,
       bookOutline,
       arrowForwardOutline,
+      chevronBackOutline,
+      chevronForwardOutline,
       searchOutline,
       cloudOfflineOutline,
       refreshOutline
@@ -482,6 +685,96 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.uiSub = this.dataService.uiText$.subscribe(ui => {
       this.uiTextSnapshot = ui || {};
     });
+    this.adsSub = this.dataService.activeAdvertisements$.subscribe(ads => {
+      this.visibleAds = (ads || [])
+        .map(ad => ({
+          ad,
+          src: this.dataService.resolveAdImageUrl(ad, false),
+          triedFallback: false
+        }))
+        .filter(slide => !!slide.src);
+
+      this.currentAdIndex = 0;
+      this.restartAdCarousel();
+    });
+  }
+
+  private restartAdCarousel(): void {
+    this.stopAdCarousel();
+    if (this.visibleAds.length > 1) {
+      this.adTimer = setInterval(() => {
+        if (this.visibleAds.length > 1) {
+          this.currentAdIndex = (this.currentAdIndex + 1) % this.visibleAds.length;
+        }
+      }, this.AD_ROTATION_INTERVAL_MS);
+    }
+  }
+
+  private stopAdCarousel(): void {
+    if (this.adTimer !== null) {
+      clearInterval(this.adTimer);
+      this.adTimer = null;
+    }
+  }
+
+  public prevAd(event: Event): void {
+    event.stopPropagation();
+    if (this.visibleAds.length <= 1) return;
+    this.currentAdIndex = (this.currentAdIndex - 1 + this.visibleAds.length) % this.visibleAds.length;
+    this.restartAdCarousel();
+  }
+
+  public nextAd(event: Event): void {
+    event.stopPropagation();
+    if (this.visibleAds.length <= 1) return;
+    this.currentAdIndex = (this.currentAdIndex + 1) % this.visibleAds.length;
+    this.restartAdCarousel();
+  }
+
+  public goToAd(index: number, event: Event): void {
+    event.stopPropagation();
+    if (index < 0 || index >= this.visibleAds.length) return;
+    this.currentAdIndex = index;
+    this.restartAdCarousel();
+  }
+
+  public onAdClick(ad: AdvertisementItem): void {
+    const rawUrl = (ad?.url || '').trim();
+    if (!rawUrl) return;
+
+    if (rawUrl.startsWith('/')) {
+      this.router.navigateByUrl(rawUrl);
+      return;
+    }
+
+    const safeUrl = SecurityUtil.sanitizeExternalUrl(rawUrl);
+    if (!safeUrl) return;
+    window.open(safeUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  public onAdImageError(slide: AdSlideView): void {
+    if (!slide.triedFallback) {
+      slide.triedFallback = true;
+      const fallbackSrc = this.dataService.resolveAdImageUrl(slide.ad, true);
+      if (fallbackSrc && fallbackSrc !== slide.src) {
+        slide.src = fallbackSrc;
+        return;
+      }
+    }
+
+    // Both remote and local fallback failed -> remove broken ad cleanly so no broken image shows
+    this.visibleAds = this.visibleAds.filter(item => item.ad.id !== slide.ad.id);
+    if (this.visibleAds.length === 0) {
+      this.currentAdIndex = 0;
+      this.stopAdCarousel();
+    } else {
+      this.currentAdIndex = this.currentAdIndex % this.visibleAds.length;
+      this.restartAdCarousel();
+    }
+  }
+
+  public trackByAdSlide(_index: number, slide: AdSlideView): string | number {
+    return slide.ad.id;
   }
 
   public onBannerClick(banner: ActiveBannerView): void {
@@ -592,7 +885,9 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.stopAdCarousel();
     this.langSub?.unsubscribe();
     this.uiSub?.unsubscribe();
+    this.adsSub?.unsubscribe();
   }
 }
