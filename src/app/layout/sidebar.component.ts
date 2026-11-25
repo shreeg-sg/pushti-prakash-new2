@@ -19,6 +19,7 @@ import { addIcons } from 'ionicons';
 import {
   homeOutline,
   bookmarkOutline,
+  calendarOutline,
   informationCircleOutline,
   bookOutline,
   documentTextOutline
@@ -83,6 +84,15 @@ import { FooterComponent } from './footer.component';
           (click)="navigateTo(['/bookmarks'])">
           <ion-icon slot="start" name="bookmark-outline" class="nav-icon"></ion-icon>
           <ion-label class="ion-text-wrap">{{ (uiText$ | async)?.['nav_bookmarks'] || 'Bookmarks' }}</ion-label>
+        </ion-item>
+
+        <ion-item
+          button
+          detail="false"
+          [class.active-menu-item]="(activePath$ | async) === '/tippani'"
+          (click)="navigateTo(['/tippani'])">
+          <ion-icon slot="start" name="calendar-outline" class="nav-icon"></ion-icon>
+          <ion-label class="ion-text-wrap">{{ (uiText$ | async)?.['nav_tippani'] || 'Tippani' }}</ion-label>
         </ion-item>
 
         <ion-item
@@ -245,6 +255,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
     addIcons({
       homeOutline,
       bookmarkOutline,
+      calendarOutline,
       informationCircleOutline,
       bookOutline,
       documentTextOutline
