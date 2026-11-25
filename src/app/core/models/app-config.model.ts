@@ -90,16 +90,21 @@ export interface NotificationSchedule {
 
 export interface BannerItem {
   id?: string;
+  order?: number; // Optional display priority (lower appears first)
   date?: string; // YYYY-MM-DD
   startDate?: string; // YYYY-MM-DD
   endDate?: string; // YYYY-MM-DD
+  fromDate?: string; // Alias for startDate (YYYY-MM-DD)
+  toDate?: string; // Alias for endDate (YYYY-MM-DD)
+  dateLabel?: LocalizedStringMap | string; // Optional custom date badge label
   isEnabled?: boolean;
   isDefault?: boolean;
-  isNew?: boolean; // NEW: Highlights banner with a pulsating "NEW" tag
+  isNew?: boolean; // Highlights banner with a pulsating "NEW" badge
   message: LocalizedStringMap;
-  targetBookId?: string; // NEW: Routes directly to book or chapter
-  targetChapterId?: string; // NEW: Direct chapter link
-  actionLabel?: LocalizedStringMap; // NEW: Button text e.g. "Read Now" / "पढ़ें"
+  targetBookId?: string; // Routes directly to book or chapter
+  targetChapterId?: string; // Direct chapter link
+  url?: string; // External https:// link OR internal app route (e.g. "/tippani")
+  actionLabel?: LocalizedStringMap; // Button text e.g. "Read Now" / "पढ़ें"
 }
 
 export interface AdvertisementItem {
@@ -110,7 +115,7 @@ export interface AdvertisementItem {
   fromDate?: string; // YYYY-MM-DD
   toDate?: string; // YYYY-MM-DD
   url?: string;
-  imagePath?: string; // e.g. "src/assets/image/advertisement/<uniqueName>"
+  imagePath?: string; // e.g. "images/advertisement/<uniqueName>"
 }
 
 export interface CalendarEventItem {
