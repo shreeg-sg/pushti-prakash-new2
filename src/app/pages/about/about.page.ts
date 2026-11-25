@@ -3,14 +3,12 @@ import { CommonModule } from '@angular/common';
 import {
   IonContent,
   IonCard,
-  IonCardHeader,
-  IonCardTitle,
   IonCardContent,
   IonButton,
   IonIcon
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
-import { chatboxEllipsesOutline, mailOutline, globeOutline } from 'ionicons/icons';
+import { chatboxEllipsesOutline, mailOutline, globeOutline, sparklesOutline } from 'ionicons/icons';
 import { combineLatest } from 'rxjs';
 import { map } from 'rxjs/operators';
 
@@ -27,8 +25,6 @@ import { SecurityUtil } from '../../core/utils/security.util';
     HeaderComponent,
     IonContent,
     IonCard,
-    IonCardHeader,
-    IonCardTitle,
     IonCardContent,
     IonButton,
     IonIcon
@@ -39,31 +35,43 @@ import { SecurityUtil } from '../../core/utils/security.util';
     <ion-content class="ion-padding about-page-content">
       <div class="about-container" *ngIf="viewModel$ | async as vm">
         <ion-card class="about-card">
-          <div class="about-logo-box" *ngIf="vm.logoUrl">
-            <img [src]="vm.logoUrl" alt="App Logo" class="about-logo" />
+          <!-- Tinted Hero Header Band -->
+          <div class="about-hero-band">
+            <div class="about-logo-frame" *ngIf="vm.logoUrl">
+              <img [src]="vm.logoUrl" alt="App Logo" class="about-logo" />
+            </div>
+            <h1 class="about-title">{{ vm.appName }}</h1>
+            <div class="about-accent-divider">
+              <span class="divider-line"></span>
+              <ion-icon name="sparkles-outline" class="divider-icon"></ion-icon>
+              <span class="divider-line"></span>
+            </div>
           </div>
 
-          <ion-card-header class="ion-text-center">
-            <ion-card-title class="about-title">{{ vm.appName }}</ion-card-title>
-          </ion-card-header>
-
           <ion-card-content class="about-content">
-            <p class="about-description">{{ vm.description }}</p>
+            <!-- Compact Styled Description Box -->
+            <div class="about-description-box" *ngIf="vm.description">
+              <p class="about-description">{{ vm.description }}</p>
+            </div>
 
-            <!-- Centered Contact Links -->
+            <!-- Compact Contact Pill Links -->
             <div class="contact-links" *ngIf="vm.safeMailtoHref || vm.safeWebsiteUrl">
               <a *ngIf="vm.safeMailtoHref" [href]="vm.safeMailtoHref" class="contact-pill-link">
-                <ion-icon name="mail-outline"></ion-icon>
-                <span>{{ vm.contactEmail }}</span>
+                <span class="contact-icon-badge">
+                  <ion-icon name="mail-outline"></ion-icon>
+                </span>
+                <span class="contact-pill-text">{{ vm.contactEmail }}</span>
               </a>
 
               <a *ngIf="vm.safeWebsiteUrl" [href]="vm.safeWebsiteUrl" target="_blank" rel="noopener noreferrer" class="contact-pill-link">
-                <ion-icon name="globe-outline"></ion-icon>
-                <span>{{ vm.safeWebsiteUrl }}</span>
+                <span class="contact-icon-badge">
+                  <ion-icon name="globe-outline"></ion-icon>
+                </span>
+                <span class="contact-pill-text">{{ vm.safeWebsiteUrl }}</span>
               </a>
             </div>
 
-            <!-- Centered Feedback CTA -->
+            <!-- Feedback CTA -->
             <div class="feedback-cta-wrapper" *ngIf="vm.safeFeedbackUrl">
               <ion-button
                 expand="block"
@@ -80,72 +88,174 @@ import { SecurityUtil } from '../../core/utils/security.util';
     </ion-content>
   `,
   styles: [`
+    .about-page-content {
+      --background: var(--ion-background-color, #fffdf9);
+    }
+
     .about-container {
-      max-width: 680px;
-      margin: 0 auto;
+      max-width: 620px;
+      margin: 6px auto 16px;
     }
+
     .about-card {
-      border-radius: 18px;
-      padding: 20px 12px;
-      text-align: center;
-    }
-    .about-logo-box {
-      display: flex;
-      justify-content: center;
-      margin-top: 10px;
-    }
-    .about-logo {
-      width: 88px;
-      height: 88px;
       border-radius: 20px;
+      overflow: hidden;
+      padding: 0;
+      margin: 0;
+      text-align: center;
+      background: var(--ion-card-background, #fff8ec);
+      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.16);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    }
+
+    .about-hero-band {
+      background: linear-gradient(
+        180deg,
+        rgba(var(--ion-color-primary-rgb), 0.12) 0%,
+        rgba(var(--ion-color-primary-rgb), 0.03) 100%
+      );
+      padding: 22px 16px 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .about-logo-frame {
+      width: 76px;
+      height: 76px;
+      border-radius: 18px;
+      background: #ffffff;
+      padding: 6px;
+      box-shadow: 0 6px 16px rgba(var(--ion-color-primary-rgb), 0.16);
+      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.14);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+
+    .about-logo {
+      width: 100%;
+      height: 100%;
+      border-radius: 12px;
       object-fit: contain;
     }
+
     .about-title {
-      font-size: 1.4rem;
+      font-size: 1.18rem;
       font-weight: 800;
+      letter-spacing: 0.2px;
       color: var(--ion-color-primary);
-      text-align: center !important;
+      margin: 0;
+      text-align: center;
     }
+
+    .about-accent-divider {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 130px;
+      margin-top: 8px;
+    }
+
+    .divider-line {
+      flex: 1;
+      height: 1px;
+      background: rgba(var(--ion-color-primary-rgb), 0.28);
+    }
+
+    .divider-icon {
+      font-size: 0.85rem;
+      color: var(--ion-color-secondary, var(--ion-color-primary));
+    }
+
+    .about-content {
+      padding: 14px 16px 20px;
+    }
+
+    .about-description-box {
+      background: rgba(var(--ion-color-primary-rgb), 0.04);
+      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.1);
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin: 0 auto 16px;
+      max-width: 520px;
+    }
+
     .about-description {
-      text-align: center !important;
-      font-size: 1rem;
-      line-height: 1.6;
-      margin: 12px auto 20px;
+      text-align: center;
+      font-size: 0.85rem;
+      line-height: 1.58;
+      color: var(--ion-text-color, #2c1810);
+      opacity: 0.92;
+      margin: 0;
       white-space: pre-line;
-      max-width: 560px;
     }
+
     .contact-links {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 10px;
-      margin: 18px auto;
+      gap: 8px;
+      margin: 0 auto 16px;
     }
+
     .contact-pill-link {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
-      padding: 10px 18px;
-      border-radius: 20px;
-      background: rgba(var(--ion-color-primary-rgb), 0.08);
+      padding: 7px 14px 7px 8px;
+      border-radius: 22px;
+      background: rgba(var(--ion-color-primary-rgb), 0.07);
+      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.14);
       color: var(--ion-color-primary);
       text-decoration: none;
       font-weight: 600;
-      font-size: 0.95rem;
-      transition: background 0.2s ease;
+      font-size: 0.82rem;
+      max-width: 100%;
+      transition: background 0.2s ease, transform 0.15s ease;
+
+      &:active {
+        transform: scale(0.98);
+        background: rgba(var(--ion-color-primary-rgb), 0.14);
+      }
     }
+
+    .contact-icon-badge {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--ion-color-primary);
+      color: var(--ion-color-primary-contrast, #ffffff);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.82rem;
+      flex-shrink: 0;
+    }
+
+    .contact-pill-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .feedback-cta-wrapper {
       display: flex;
       justify-content: center;
-      margin-top: 24px;
+      margin-top: 8px;
     }
+
     .feedback-btn {
-      max-width: 320px;
+      max-width: 290px;
       width: 100%;
+      height: 42px;
       --border-radius: 12px;
       font-weight: 700;
+      font-size: 0.86rem;
     }
   `]
 })
@@ -183,7 +293,7 @@ export class AboutPage {
   );
 
   constructor() {
-    addIcons({ chatboxEllipsesOutline, mailOutline, globeOutline });
+    addIcons({ chatboxEllipsesOutline, mailOutline, globeOutline, sparklesOutline });
   }
 
   public openFeedbackForm(url: string): void {
