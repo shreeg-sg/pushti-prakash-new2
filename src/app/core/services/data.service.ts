@@ -16,7 +16,9 @@ import {
   Book,
   Chapter,
   AboutInfo,
-  NotificationSchedule
+  NotificationSchedule,
+  AdvertisementItem,
+  CalendarMonthPayload
 } from '../models/app-config.model';
 import { ThemeService } from './theme.service';
 import { StorageService } from './storage.service';
@@ -65,6 +67,20 @@ export class DataService implements OnDestroy {
   // 1 hour cooldown (in milliseconds) for manual swipe-down hard refresh based on system clock
   private readonly HOURLY_COOLDOWN_MS = 60 * 60 * 1000;
   private readonly SAFE_ID_REGEX = /^[a-zA-Z0-9_-]+$/;
+  private readonly MONTH_FILE_NAMES = [
+    'january',
+    'february',
+    'march',
+    'april',
+    'may',
+    'june',
+    'july',
+    'august',
+    'september',
+    'october',
+    'november',
+    'december'
+  ];
 
   // Tracks the latest hard-refresh version across the entire src/assets/ folder (mock, chapters, images, audio)
   private assetVersion: string = this.getLocalDateString();
@@ -75,6 +91,7 @@ export class DataService implements OnDestroy {
   );
 
   private chapterContentCache = new Map<string, ChapterLoadedContent>();
+  private calendarMonthCache = new Map<string, CalendarMonthPayload | null>();
   private appStateListener?: PluginListenerHandle;
   private langNotifySub?: Subscription;
 
@@ -94,6 +111,10 @@ export class DataService implements OnDestroy {
 
   public readonly updateBanner$: Observable<string | null> = this.activeBanners$.pipe(
     map(banners => (banners.length > 0 ? banners[0].messageHtml : null))
+  );
+
+  public readonly activeAdvertisements$: Observable<AdvertisementItem[]> = this.config$.pipe(
+    map((cfg: AppConfig) => this.resolveActiveAdvertisements(cfg?.advertisements))
   );
 
   public resolveAllEligibleBanners(bannerData: any, lang: string): ActiveBannerView[] {
@@ -163,6 +184,155 @@ export class DataService implements OnDestroy {
     }
 
     return results;
+  }
+
+  /**
+   * Filters, normalizes, and sorts advertisements from advertisement.json.
+   * Handles arrays, single objects, empty/missing configs, disabled ads, and date windows safely.
+   */
+  public resolveActiveAdvertisements(adData: any): AdvertisementItem[] {
+    if (!adData) return [];
+
+    let rawList: any[] = [];
+    if (Array.isArray(adData)) {
+      rawList = adData;
+    } else if (typeof adData === 'object') {
+      if (Array.isArray(adData.advertisements)) {
+        rawList = adData.advertisements;
+      } else if (adData.id !== undefined || adData.uniqueName || adData.unique_name || adData.imagePath) {
+        rawList = [adData];
+      }
+    }
+
+    if (rawList.length === 0) return [];
+
+    const today = this.getLocalDateString();
+    const validAds: AdvertisementItem[] = [];
+
+    for (let i = 0; i < rawList.length; i++) {
+      const item = rawList[i];
+      if (!item || typeof item !== 'object') continue;
+      if (item.isEnabled === false) continue;
+
+      const fromDate = typeof (item.fromDate || item.from_date || item.startDate) === 'string'
+        ? String(item.fromDate || item.from_date || item.startDate).trim()
+        : '';
+      const toDate = typeof (item.toDate || item.to_date || item.endDate) === 'string'
+        ? String(item.toDate || item.to_date || item.endDate).trim()
+        : '';
+
+      if (fromDate && today < fromDate) continue;
+      if (toDate && today > toDate) continue;
+
+      const uniqueName = String(item.uniqueName || item.unique_name || '').trim();
+      const imagePath = typeof (item.imagePath || item.image_path) === 'string'
+        ? String(item.imagePath || item.image_path).trim()
+        : '';
+
+      if (!uniqueName && !imagePath) continue;
+
+      const orderNum = Number(item.order);
+      validAds.push({
+        id: item.id !== undefined && item.id !== null ? item.id : `ad_${i + 1}`,
+        uniqueName: uniqueName || `ad_${i + 1}`,
+        order: Number.isFinite(orderNum) ? orderNum : i + 1,
+        isEnabled: true,
+        fromDate: fromDate || undefined,
+        toDate: toDate || undefined,
+        url: typeof item.url === 'string' ? item.url.trim() : undefined,
+        imagePath: imagePath || `src/assets/image/advertisement/${uniqueName}`
+      });
+    }
+
+    return validAds.sort((a, b) => a.order - b.order);
+  }
+
+  /**
+   * Resolves an advertisement image path to either the remote CDN URL or bundled local asset fallback.
+   */
+  public resolveAdImageUrl(ad: AdvertisementItem, useBundledFallback = false): string {
+    if (!ad) return '';
+    const rawPath = (ad.imagePath || (ad.uniqueName ? `src/assets/image/advertisement/${ad.uniqueName}` : '')).trim();
+    if (!rawPath) return '';
+
+    if (rawPath.startsWith('https://') || rawPath.startsWith('http://') || rawPath.startsWith('data:image/')) {
+      return useBundledFallback ? '' : this.resolveMediaUrl(rawPath);
+    }
+
+    // Normalize "src/assets/image/advertisement/..." or "assets/image/advertisement/..." to relative path under assets/
+    const cleaned = rawPath
+      .replace(/^\/+/, '')
+      .replace(/^src\/assets\//i, '')
+      .replace(/^assets\//i, '');
+
+    if (!cleaned || cleaned.includes('..')) return '';
+
+    if (useBundledFallback) {
+      return `assets/${cleaned}`;
+    }
+
+    return this.resolveMediaUrl(cleaned);
+  }
+
+  /**
+   * Loads monthly Tippani calendar JSON from `src/assets/mock/calendar/<year>/<month>.json`.
+   * Non-mandatory: returns null cleanly when a month file is not available so a plain Gregorian calendar renders.
+   */
+  public async loadCalendarMonth(year: number, monthIndex: number, forceRefresh = false): Promise<CalendarMonthPayload | null> {
+    if (!Number.isInteger(year) || monthIndex < 0 || monthIndex > 11) {
+      return null;
+    }
+
+    const monthFile = this.MONTH_FILE_NAMES[monthIndex];
+    const cacheKey = `${year}-${monthIndex}`;
+
+    if (!forceRefresh && this.calendarMonthCache.has(cacheKey)) {
+      return this.calendarMonthCache.get(cacheKey) ?? null;
+    }
+
+    const relativePath = `mock/calendar/${year}/${monthFile}.json`;
+    let payload: CalendarMonthPayload | null = null;
+
+    // 1. Try remote CDN / provider first
+    const remoteUrl = this.resolveMediaUrl(relativePath, false);
+    if (remoteUrl) {
+      const cb = `_cb=${forceRefresh ? Date.now() : this.assetVersion}`;
+      const remoteRes = await this.fetchRemoteJson<any>(remoteUrl, cb, forceRefresh, null);
+      if (remoteRes && typeof remoteRes === 'object' && (Array.isArray(remoteRes.days) || remoteRes.hinduMonth)) {
+        payload = {
+          year: Number(remoteRes.year) || year,
+          month: Number(remoteRes.month) || (monthIndex + 1),
+          monthName: remoteRes.monthName || monthFile,
+          hinduMonth: remoteRes.hinduMonth,
+          days: Array.isArray(remoteRes.days) ? remoteRes.days : []
+        };
+      }
+    }
+
+    // 2. Fallback to locally bundled assets/mock/calendar/<year>/<month>.json
+    if (!payload) {
+      try {
+        const localBase = (environment.fallbackMockPath || 'assets/mock/').trim().replace(/\/+$/, '');
+        const localUrl = `${localBase}/calendar/${year}/${monthFile}.json`;
+        const localRes = await firstValueFrom(
+          this.http.get<any>(localUrl).pipe(catchError(() => of(null)))
+        );
+        if (localRes && typeof localRes === 'object' && (Array.isArray(localRes.days) || localRes.hinduMonth)) {
+          payload = {
+            year: Number(localRes.year) || year,
+            month: Number(localRes.month) || (monthIndex + 1),
+            monthName: localRes.monthName || monthFile,
+            hinduMonth: localRes.hinduMonth,
+            days: Array.isArray(localRes.days) ? localRes.days : []
+          };
+        }
+      } catch {
+        payload = null;
+      }
+    }
+
+    this.calendarMonthCache.set(cacheKey, payload);
+    return payload;
   }
 
   public readonly enabledLanguages$: Observable<SupportedLanguage[]> = this.config$.pipe(
@@ -267,7 +437,7 @@ export class DataService implements OnDestroy {
       if (dailyResult.success) {
         await Preferences.set({ key: this.LAST_DAILY_SYNC_KEY, value: today });
       } else if (this.configSubject.value) {
-        // Re-evaluate date-based notification banners against the new calendar date even if offline
+        // Re-evaluate date-based notification banners & ads against the new calendar date even if offline
         this.configSubject.next({ ...this.configSubject.value });
       }
       return dailyResult;
@@ -303,9 +473,10 @@ export class DataService implements OnDestroy {
 
   /**
    * Synchronizes the complete remote `src/assets/` folder:
-   * - All 7 config manifests in `src/assets/mock/`
+   * - All config manifests in `src/assets/mock/` (including advertisement.json)
    * - All chapter transcripts & chapter images in `src/assets/mock/chapters/`
-   * - All brand logos, watermarks & book cover images in `src/assets/images/`
+   * - All calendar JSONs in `src/assets/mock/calendar/`
+   * - All brand logos, watermarks, ad images & book cover images in `src/assets/images/`
    * - All recorded MP3 audio tracks in `src/assets/audio/`
    */
   public async syncWithRemote(forceRefresh = false): Promise<SyncResult> {
@@ -331,7 +502,7 @@ export class DataService implements OnDestroy {
       // Preserve existing cached/bundled sections if any individual secondary JSON fails to load
       const existing = this.configSubject.value || (await this.loadBundledFallbackConfig());
 
-      const [identity, languages, ui, books, banner, about, schedules] = await Promise.all([
+      const [identity, languages, ui, books, banner, about, schedules, advertisements] = await Promise.all([
         this.fetchRemoteJson<AppIdentity | null>(this.buildProviderFileUrl(baseDir, 'app_identity.json'), cb, forceRefresh, null),
         this.fetchRemoteJson<SupportedLanguage[]>(
           this.buildProviderFileUrl(baseDir, 'supportedLanguages.json'),
@@ -363,6 +534,12 @@ export class DataService implements OnDestroy {
           cb,
           forceRefresh,
           existing?.notification_schedules || []
+        ),
+        this.fetchRemoteJson<any>(
+          this.buildProviderFileUrl(baseDir, 'advertisement.json'),
+          cb,
+          forceRefresh,
+          existing?.advertisements || []
         )
       ]);
 
@@ -386,17 +563,19 @@ export class DataService implements OnDestroy {
         about_info: about,
         notification_schedules: Array.isArray(schedules) && schedules.length > 0
           ? schedules
-          : (existing?.notification_schedules || [])
+          : (existing?.notification_schedules || []),
+        advertisements: advertisements ?? (existing?.advertisements || [])
       };
 
       const isUpdated = this.hasConfigChanged(this.configSubject.value, constructedConfig);
 
       if (forceRefresh || isUpdated || !this.configSubject.value) {
-        // Bump asset version so the entire src/assets/ folder (chapters, images, audio) refreshes
+        // Bump asset version so the entire src/assets/ folder (chapters, images, audio, calendar) refreshes
         this.assetVersion = refreshStamp;
         await Preferences.set({ key: this.ASSET_VERSION_KEY, value: this.assetVersion });
 
         this.chapterContentCache.clear();
+        this.calendarMonthCache.clear();
         await this.clearDiskChapterCache();
         await this.clearDiskAudioCache();
 
@@ -466,7 +645,8 @@ export class DataService implements OnDestroy {
       'books.json',
       'updateBannerMessage.json',
       'about_info.json',
-      'notification_schedules.json'
+      'notification_schedules.json',
+      'advertisement.json'
     ];
     await Promise.all(
       files.map(f =>
@@ -525,14 +705,15 @@ export class DataService implements OnDestroy {
         baseDir = `${baseDir}/`;
       }
 
-      const [identity, languages, ui, books, banner, about, schedules] = await Promise.all([
+      const [identity, languages, ui, books, banner, about, schedules, advertisements] = await Promise.all([
         firstValueFrom(this.http.get<AppIdentity>(`${baseDir}app_identity.json`).pipe(catchError(() => of(null)))),
         firstValueFrom(this.http.get<SupportedLanguage[]>(`${baseDir}supportedLanguages.json`).pipe(catchError(() => of([])))),
         firstValueFrom(this.http.get<UiTranslations>(`${baseDir}ui_translations.json`).pipe(catchError(() => of({})))),
         firstValueFrom(this.http.get<Book[]>(`${baseDir}books.json`).pipe(catchError(() => of([])))),
         firstValueFrom(this.http.get<any>(`${baseDir}updateBannerMessage.json`).pipe(catchError(() => of([])))),
         firstValueFrom(this.http.get<AboutInfo>(`${baseDir}about_info.json`).pipe(catchError(() => of({ description: {}, feedback_links: {} })))),
-        firstValueFrom(this.http.get<NotificationSchedule[]>(`${baseDir}notification_schedules.json`).pipe(catchError(() => of([]))))
+        firstValueFrom(this.http.get<NotificationSchedule[]>(`${baseDir}notification_schedules.json`).pipe(catchError(() => of([])))),
+        firstValueFrom(this.http.get<any>(`${baseDir}advertisement.json`).pipe(catchError(() => of([]))))
       ]);
 
       if (!identity || typeof identity !== 'object' || !Array.isArray(books) || books.length === 0) {
@@ -548,7 +729,8 @@ export class DataService implements OnDestroy {
         books: books,
         updateBannerMessage: banner,
         about_info: about,
-        notification_schedules: Array.isArray(schedules) ? schedules : []
+        notification_schedules: Array.isArray(schedules) ? schedules : [],
+        advertisements: advertisements || []
       };
     } catch {
       return null;
@@ -727,6 +909,12 @@ export class DataService implements OnDestroy {
   public localizeField(mapObj: Record<string, string> | undefined, lang: string): string {
     if (!mapObj || typeof mapObj !== 'object') return '';
     return mapObj[lang] || mapObj['hi'] || mapObj['gu'] || mapObj['en'] || Object.values(mapObj)[0] || '';
+  }
+
+  public localizeFlexibleField(value: Record<string, string> | string | undefined, lang: string): string {
+    if (!value) return '';
+    if (typeof value === 'string') return value.trim();
+    return this.localizeField(value, lang);
   }
 
   public getChapterStream(bookId: string, chapterId: string): Observable<{ book: Book; chapter: Chapter } | null> {
