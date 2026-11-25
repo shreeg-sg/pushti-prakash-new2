@@ -29,9 +29,13 @@ export interface ActiveBannerView {
   id: string;
   messageHtml: string;
   isNew: boolean;
+  isDefault: boolean;
+  dateLabel?: string;
   targetBookId?: string;
   targetChapterId?: string;
+  url?: string;
   actionLabel?: string;
+  order: number;
 }
 
 export interface ChapterLoadedContent {
@@ -127,33 +131,41 @@ export class DataService implements OnDestroy {
       for (const item of bannerData) {
         if (!item || item.isEnabled === false) continue;
 
-        if (item.date && item.date === today) {
-          rawEligibleItems.push(item);
+        const exactDate = typeof item.date === 'string' ? item.date.trim() : '';
+        const startDate = typeof (item.startDate || item.fromDate) === 'string'
+          ? String(item.startDate || item.fromDate).trim()
+          : '';
+        const endDate = typeof (item.endDate || item.toDate) === 'string'
+          ? String(item.endDate || item.toDate).trim()
+          : '';
+
+        if (exactDate && exactDate !== 'default') {
+          if (exactDate === today) {
+            rawEligibleItems.push(item);
+          }
           continue;
         }
 
-        if (item.startDate || item.endDate) {
-          const start = item.startDate;
-          const end = item.endDate;
-          const isAfterStart = !start || today >= start;
-          const isBeforeEnd = !end || today <= end;
+        if (startDate || endDate) {
+          const isAfterStart = !startDate || today >= startDate;
+          const isBeforeEnd = !endDate || today <= endDate;
           if (isAfterStart && isBeforeEnd) {
             rawEligibleItems.push(item);
-            continue;
           }
+          continue;
         }
 
-        if (item.isDefault || item.date === 'default') {
+        if (item.isDefault || exactDate === 'default') {
           rawEligibleItems.push(item);
         }
       }
     } else if (typeof bannerData === 'object') {
       if (bannerData[today]) {
-        rawEligibleItems.push({ message: bannerData[today] });
+        rawEligibleItems.push({ message: bannerData[today], date: today });
       } else if (bannerData.default) {
-        rawEligibleItems.push({ message: bannerData.default });
+        rawEligibleItems.push({ message: bannerData.default, isDefault: true });
       } else {
-        rawEligibleItems.push({ message: bannerData });
+        rawEligibleItems.push({ message: bannerData, isDefault: true });
       }
     }
 
@@ -172,18 +184,67 @@ export class DataService implements OnDestroy {
           ? item.targetChapterId.trim()
           : undefined;
 
+        const rawUrl = typeof (item.url || item.targetUrl || item.link) === 'string'
+          ? String(item.url || item.targetUrl || item.link).trim()
+          : '';
+        let safeUrl: string | undefined;
+        if (rawUrl) {
+          if (rawUrl.startsWith('/') && !rawUrl.startsWith('//') && !rawUrl.includes('..')) {
+            safeUrl = rawUrl;
+          } else {
+            const extUrl = SecurityUtil.sanitizeExternalUrl(rawUrl, true);
+            if (extUrl) safeUrl = extUrl;
+          }
+        }
+
+        const isDefault = item.isDefault === true || item.date === 'default';
+        const customDateLabel = item.dateLabel
+          ? this.localizeFlexibleField(item.dateLabel, lang)
+          : '';
+        const autoDateLabel = !isDefault
+          ? this.formatBannerDateBadge(item.date, item.startDate || item.fromDate, item.endDate || item.toDate)
+          : '';
+        const orderNum = Number(item.order);
+
         results.push({
           id: item.id ? String(item.id) : `banner_${counter++}`,
           messageHtml: safeMsgHtml,
           isNew: item.isNew === true,
+          isDefault,
+          dateLabel: customDateLabel || autoDateLabel || undefined,
           targetBookId: cleanBookId,
           targetChapterId: cleanChapterId,
-          actionLabel: item.actionLabel ? this.localizeField(item.actionLabel, lang) : undefined
+          url: safeUrl,
+          actionLabel: item.actionLabel ? this.localizeField(item.actionLabel, lang) : undefined,
+          order: Number.isFinite(orderNum) ? orderNum : (isDefault ? 9999 : counter)
         });
       }
     }
 
-    return results;
+    // Prioritize explicit order -> NEW / date-based notifications -> default welcome banners
+    return results.sort((a, b) => {
+      if (a.isDefault !== b.isDefault) return a.isDefault ? 1 : -1;
+      if (a.order !== b.order) return a.order - b.order;
+      if (a.isNew !== b.isNew) return a.isNew ? -1 : 1;
+      return 0;
+    });
+  }
+
+  private formatBannerDateBadge(date?: string, startDate?: string, endDate?: string): string {
+    const fmt = (iso?: string): string => {
+      if (!iso || typeof iso !== 'string') return '';
+      const parts = iso.trim().split('-').map(Number);
+      if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) return '';
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const m = months[parts[1] - 1];
+      return m ? `${parts[2]} ${m}` : '';
+    };
+    const exact = fmt(date);
+    if (exact) return exact;
+    const s = fmt(startDate);
+    const e = fmt(endDate);
+    if (s && e) return s === e ? s : `${s} – ${e}`;
+    return s || e || '';
   }
 
   /**
@@ -240,7 +301,7 @@ export class DataService implements OnDestroy {
         fromDate: fromDate || undefined,
         toDate: toDate || undefined,
         url: typeof item.url === 'string' ? item.url.trim() : undefined,
-        imagePath: imagePath || `src/assets/image/advertisement/${uniqueName}`
+        imagePath: imagePath || `images/advertisement/${uniqueName}`
       });
     }
 
@@ -252,20 +313,27 @@ export class DataService implements OnDestroy {
    */
   public resolveAdImageUrl(ad: AdvertisementItem, useBundledFallback = false): string {
     if (!ad) return '';
-    const rawPath = (ad.imagePath || (ad.uniqueName ? `src/assets/image/advertisement/${ad.uniqueName}` : '')).trim();
+    const rawPath = (ad.imagePath || (ad.uniqueName ? `images/advertisement/${ad.uniqueName}` : '')).trim();
     if (!rawPath) return '';
 
     if (rawPath.startsWith('https://') || rawPath.startsWith('http://') || rawPath.startsWith('data:image/')) {
       return useBundledFallback ? '' : this.resolveMediaUrl(rawPath);
     }
 
-    // Normalize "src/assets/image/advertisement/..." or "assets/image/advertisement/..." to relative path under assets/
-    const cleaned = rawPath
+    // Normalize "src/assets/images/advertisement/...", "src/assets/image/...", or "advertisement/..." to "images/advertisement/..."
+    let cleaned = rawPath
       .replace(/^\/+/, '')
       .replace(/^src\/assets\//i, '')
-      .replace(/^assets\//i, '');
+      .replace(/^assets\//i, '')
+      .replace(/^image\//i, 'images/');
 
     if (!cleaned || cleaned.includes('..')) return '';
+
+    if (/^advertisement\//i.test(cleaned)) {
+      cleaned = `images/${cleaned}`;
+    } else if (!cleaned.includes('/')) {
+      cleaned = `images/advertisement/${cleaned}`;
+    }
 
     if (useBundledFallback) {
       return `assets/${cleaned}`;
@@ -290,13 +358,15 @@ export class DataService implements OnDestroy {
       return this.calendarMonthCache.get(cacheKey) ?? null;
     }
 
-    const relativePath = `mock/calendar/${year}/${monthFile}.json`;
+    const folderCandidates = ['calendar', 'calender'];
     let payload: CalendarMonthPayload | null = null;
 
-    // 1. Try remote CDN / provider first
-    const remoteUrl = this.resolveMediaUrl(relativePath, false);
-    if (remoteUrl) {
-      const cb = `_cb=${forceRefresh ? Date.now() : this.assetVersion}`;
+    // 1. Try remote CDN / provider first (canonical "calendar" with legacy "calender" fallback)
+    const cb = `_cb=${forceRefresh ? Date.now() : this.assetVersion}`;
+    for (const folder of folderCandidates) {
+      const relativePath = `mock/${folder}/${year}/${monthFile}.json`;
+      const remoteUrl = this.resolveMediaUrl(relativePath, false);
+      if (!remoteUrl) continue;
       const remoteRes = await this.fetchRemoteJson<any>(remoteUrl, cb, forceRefresh, null);
       if (remoteRes && typeof remoteRes === 'object' && (Array.isArray(remoteRes.days) || remoteRes.hinduMonth)) {
         payload = {
@@ -306,28 +376,32 @@ export class DataService implements OnDestroy {
           hinduMonth: remoteRes.hinduMonth,
           days: Array.isArray(remoteRes.days) ? remoteRes.days : []
         };
+        break;
       }
     }
 
     // 2. Fallback to locally bundled assets/mock/calendar/<year>/<month>.json
     if (!payload) {
-      try {
-        const localBase = (environment.fallbackMockPath || 'assets/mock/').trim().replace(/\/+$/, '');
-        const localUrl = `${localBase}/calendar/${year}/${monthFile}.json`;
-        const localRes = await firstValueFrom(
-          this.http.get<any>(localUrl).pipe(catchError(() => of(null)))
-        );
-        if (localRes && typeof localRes === 'object' && (Array.isArray(localRes.days) || localRes.hinduMonth)) {
-          payload = {
-            year: Number(localRes.year) || year,
-            month: Number(localRes.month) || (monthIndex + 1),
-            monthName: localRes.monthName || monthFile,
-            hinduMonth: localRes.hinduMonth,
-            days: Array.isArray(localRes.days) ? localRes.days : []
-          };
+      const localBase = (environment.fallbackMockPath || 'assets/mock/').trim().replace(/\/+$/, '');
+      for (const folder of folderCandidates) {
+        try {
+          const localUrl = `${localBase}/${folder}/${year}/${monthFile}.json`;
+          const localRes = await firstValueFrom(
+            this.http.get<any>(localUrl).pipe(catchError(() => of(null)))
+          );
+          if (localRes && typeof localRes === 'object' && (Array.isArray(localRes.days) || localRes.hinduMonth)) {
+            payload = {
+              year: Number(localRes.year) || year,
+              month: Number(localRes.month) || (monthIndex + 1),
+              monthName: localRes.monthName || monthFile,
+              hinduMonth: localRes.hinduMonth,
+              days: Array.isArray(localRes.days) ? localRes.days : []
+            };
+            break;
+          }
+        } catch {
+          payload = null;
         }
-      } catch {
-        payload = null;
       }
     }
 
