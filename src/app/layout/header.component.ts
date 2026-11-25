@@ -383,6 +383,9 @@ export class HeaderComponent implements OnInit, OnDestroy {
       if (url.includes('/bookmarks')) {
         return this.dataService.localizeField(cfg.ui_translations['nav_bookmarks'], lang) || 'Bookmarks';
       }
+      if (url.includes('/tippani')) {
+        return this.dataService.localizeField(cfg.ui_translations['nav_tippani'], lang) || 'Tippani';
+      }
       if (url.includes('/about')) {
         return this.dataService.localizeField(cfg.ui_translations['nav_about'], lang) || 'About Us';
       }
@@ -463,7 +466,7 @@ export class HeaderComponent implements OnInit, OnDestroy {
     });
     await toast.present();
   }
-  
+
   public async setFontScale(scale: FontSizeScale): Promise<void> {
     await this.storageService.setFontSize(scale);
     const uiText = await firstValueFrom(this.uiText$);
