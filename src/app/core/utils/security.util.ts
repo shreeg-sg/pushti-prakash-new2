@@ -10,7 +10,8 @@ export class SecurityUtil {
     'P',
     'UL',
     'OL',
-    'LI'
+    'LI',
+    'A'
   ]);
   private static readonly SAFE_HEX_REGEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
   private static readonly SAFE_COLOR_VALUE_REGEX = /^(#[0-9a-fA-F]{3,8}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|[a-zA-Z]{3,20})$/;
@@ -41,10 +42,12 @@ export class SecurityUtil {
             continue;
           }
 
-          // Strip all attributes except validated inline color/font-size on SPAN
+          // Strip all attributes except validated inline color/font-size on SPAN and safe https href on A
           const attrs = Array.from(el.attributes);
+          let hasSafeHref = false;
           for (const attr of attrs) {
-            if (el.tagName === 'SPAN' && attr.name.toLowerCase() === 'style') {
+            const attrName = attr.name.toLowerCase();
+            if (el.tagName === 'SPAN' && attrName === 'style') {
               const safeStyles: string[] = [];
               const rawColor = (el.style.color || '').trim();
               const rawSize = (el.style.fontSize || '').trim();
@@ -59,9 +62,24 @@ export class SecurityUtil {
               } else {
                 el.removeAttribute('style');
               }
+            } else if (el.tagName === 'A' && attrName === 'href') {
+              const safeHref = this.sanitizeExternalUrl(attr.value, true);
+              if (safeHref) {
+                el.setAttribute('href', safeHref);
+                el.setAttribute('target', '_blank');
+                el.setAttribute('rel', 'noopener noreferrer');
+                hasSafeHref = true;
+              } else {
+                el.removeAttribute('href');
+              }
             } else {
               el.removeAttribute(attr.name);
             }
+          }
+          if (el.tagName === 'A' && !hasSafeHref) {
+            const textNode = doc.createTextNode(el.textContent || '');
+            node.replaceChild(textNode, el);
+            continue;
           }
           cleanNode(el);
         }
