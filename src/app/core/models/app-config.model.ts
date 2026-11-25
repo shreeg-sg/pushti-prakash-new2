@@ -102,6 +102,45 @@ export interface BannerItem {
   actionLabel?: LocalizedStringMap; // NEW: Button text e.g. "Read Now" / "पढ़ें"
 }
 
+export interface AdvertisementItem {
+  id: string | number;
+  uniqueName: string;
+  order: number;
+  isEnabled: boolean;
+  fromDate?: string; // YYYY-MM-DD
+  toDate?: string; // YYYY-MM-DD
+  url?: string;
+  imagePath?: string; // e.g. "src/assets/image/advertisement/<uniqueName>"
+}
+
+export interface CalendarEventItem {
+  id?: string;
+  title: LocalizedStringMap | string;
+  description?: LocalizedStringMap | string;
+  time?: string;
+  targetBookId?: string;
+  targetChapterId?: string;
+}
+
+export interface CalendarDayEntry {
+  id: string; // e.g. "2026-11-01"
+  day: number; // 1..31 (normal Gregorian day)
+  hinduDay?: LocalizedStringMap | string; // e.g. "Ekadashi" / "एकादशी"
+  hinduTithiShort?: LocalizedStringMap | string; // Optional short grid label e.g. "शु. 11"
+  paksha?: 'shukla' | 'krishna' | string;
+  isHighlighted?: boolean;
+  highlight?: boolean; // Alias supported gracefully
+  events?: Array<CalendarEventItem | string>;
+}
+
+export interface CalendarMonthPayload {
+  year: number;
+  month: number; // 1..12
+  monthName?: string;
+  hinduMonth?: LocalizedStringMap | string; // e.g. "Kartik / Paush"
+  days: CalendarDayEntry[];
+}
+
 export interface AppConfigPayload {
   schemaVersion: number;
   lastUpdatedIso: string;
@@ -112,6 +151,7 @@ export interface AppConfigPayload {
   about_info?: AboutInfo;
   books: Book[];
   notification_schedules?: NotificationSchedule[];
+  advertisements?: AdvertisementItem[] | any;
 }
 
 export type AppConfig = AppConfigPayload;
