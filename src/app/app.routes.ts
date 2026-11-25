@@ -62,6 +62,11 @@ export const routes: Routes = [
           import('./pages/bookmarks/bookmarks.page').then(m => m.BookmarksPage)
       },
       {
+        path: 'tippani',
+        loadComponent: () =>
+          import('./pages/tippani/tippani.page').then(m => m.TippaniPage)
+      },
+      {
         path: 'about',
         loadComponent: () =>
           import('./pages/about/about.page').then(m => m.AboutPage)
