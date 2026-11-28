@@ -59,7 +59,7 @@ export class AppComponent implements OnInit {
     const minDelay = new Promise<void>(resolve => setTimeout(resolve, this.MIN_SPLASH_MS));
 
     try {
-      // 1. Hydrate local preferences & auth session
+      // 1. Hydrate local preferences & auth session while Splash Overlay is on screen
       await Promise.all([
         this.storageService.initialize(),
         this.authService.initialize()
@@ -71,37 +71,30 @@ export class AppComponent implements OnInit {
         console.warn('[AppComponent] Notification init deferred:', err);
       });
 
-      // 3. Enforce Language -> Login -> Dashboard flow from disk cache
+      // 3. Load cached/bundled/remote config FIRST (bounded by splash max cap)
+      //    so Splash Overlay is strictly Screen #1 whether data is cached or not,
+      //    and auth_config.json is resolved before routing to Language -> Login -> Dashboard.
+      await Promise.race([
+        this.dataService.initialize().catch(err => {
+          console.warn('[AppComponent] Background remote sync deferred:', err);
+        }),
+        new Promise<void>(resolve => setTimeout(resolve, this.MAX_SPLASH_MS - 1000))
+      ]);
+
+      // 4. Enforce strict startup flow: Splash -> Language (/onboarding) -> Login (/login) -> Dashboard
       if (!this.storageService.hasCompletedOnboardingSnapshot()) {
         await this.router.navigate(['/onboarding'], { replaceUrl: true });
       } else if (this.authService.isLoginRequired() && !this.authService.isLoggedInSnapshot()) {
         await this.router.navigate(['/login'], { replaceUrl: true });
+      } else {
+        await Promise.race([
+          this.authService.syncSessionOnStartup().catch(() => {}),
+          new Promise<void>(resolve => setTimeout(resolve, 4000))
+        ]);
       }
 
-      // 4. Run daily remote sync + active-user ping, bounded by the 15s splash cap
-      const syncPromise = this.dataService.initialize()
-        .then(async () => {
-          if (
-            this.storageService.hasCompletedOnboardingSnapshot() &&
-            this.authService.isLoginRequired() &&
-            !this.authService.isLoggedInSnapshot()
-          ) {
-            await this.router.navigate(['/login'], { replaceUrl: true });
-            return;
-          }
-          await this.authService.syncSessionOnStartup();
-        })
-        .catch(err => {
-          console.warn('[AppComponent] Background remote sync deferred:', err);
-        });
-
-      await Promise.all([
-        minDelay,
-        Promise.race([
-          syncPromise,
-          new Promise<void>(resolve => setTimeout(resolve, this.MAX_SPLASH_MS - 450))
-        ])
-      ]);
+      // 5. Ensure minimum 3-second splash display before revealing destination screen
+      await minDelay;
     } catch (err) {
       console.warn('[AppComponent] Startup error, continuing:', err);
       await minDelay;
