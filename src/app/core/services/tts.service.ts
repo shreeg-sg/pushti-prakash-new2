@@ -524,7 +524,7 @@ export class TtsService implements OnDestroy {
         const meta = this.activeMetadata;
         (navigator as any).mediaSession.metadata = new (window as any).MediaMetadata({
           title: meta.chapterTitle || 'Sacred Recitation',
-          artist: meta.bookTitle || 'PushtiPrakash',
+          artist: meta.bookTitle || 'Audio Reader',
           artwork: meta.coverImageUrl ? [{ src: meta.coverImageUrl }] : []
         });
         (navigator as any).mediaSession.setActionHandler('play', () => this.play());
