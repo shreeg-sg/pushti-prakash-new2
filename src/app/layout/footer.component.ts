@@ -15,7 +15,7 @@ import { DataService } from '../core/services/data.service';
     <ion-footer class="ion-no-border app-global-footer">
       <ion-toolbar class="footer-toolbar">
         <div class="footer-credit-text">
-          v{{ appVersion }} | {{ (footerCredit$ | async) || fallbackCredit }}
+          v{{ appVersion }}<ng-container *ngIf="(footerCredit$ | async) as credit"> | {{ credit }}</ng-container>
         </div>
       </ion-toolbar>
     </ion-footer>
@@ -41,10 +41,10 @@ export class FooterComponent {
   private dataService = inject(DataService);
 
   public readonly appVersion = environment.appVersion || '1.0.0';
-  public readonly fallbackCredit = environment.developerCredit || 'Developed by ShreeG';
+  public readonly fallbackCredit = environment.developerCredit || '';
 
   // Dynamically pulls tenant footer credit from remote app_identity.json if defined
   public readonly footerCredit$: Observable<string> = this.dataService.identity$.pipe(
-    map(identity => (identity as any)?.footerCredit || (identity as any)?.developerCredit || this.fallbackCredit)
+    map(identity => identity?.developerCredit || identity?.footerCredit || this.fallbackCredit)
   );
 }
