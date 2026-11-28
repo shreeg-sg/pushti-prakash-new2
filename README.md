@@ -79,3 +79,16 @@ npm start                # Run local web dev server
 npm run build            # Production Angular build
 npx cap sync             # Sync web build to Android / iOS native projects
 ```
+
+
+## 5. Release Hardening & Temple/College Mode (v2026.12.2)
+
+* **Startup Flow:** Splash Overlay (3s min / 15s max) always renders first while hydrating local cache and remote `auth_config.json`, then routes cleanly through **Language (`/onboarding`) → Login (`/login`) → Dashboard (`/dashboard`)**.
+* **Server-Side Security (`docs/supabase_setup.sql`):**
+  * `public.tenant_settings` enforces `require_unique_id` and `inactivity_expiry_days` server-side inside `complete_login` so clients cannot bypass Unique ID checks.
+  * `public.allowed_unique_ids` validates **both** `unique_id` and `email` on the same active row; when `require_unique_id = true`, `name`, `mobile`, and `state` are stored as `NULL`.
+  * `public.expire_inactive_users()` is strictly revoked from `PUBLIC`, `anon`, and `authenticated` (callable only by `pg_cron`/superuser).
+* **Tenant Feature Flags (`app_identity.json`):** Supports `features.enableTts`, `features.enableAudio`, and `features.enableCalendar` (all default to `true` for backward compatibility).
+* **Flexible Calendar:** Works as both a Temple Tippani (Gregorian + Hindu Tithi) and a College Academic Calendar (plain Gregorian dates with optional `shortLabel`, `category` badges, and multi-day `endDate` ranges).
+* **CI/CD Signing Safety:** `.github/workflows/android-build.yml` fails fast if release keystore secrets are missing unless `allow_adhoc_signing: true` is explicitly selected for internal test builds, stamps `<title>` and custom CDN origins into `src/index.html`, and purges `advertisement.json` and `auth_config.json` on jsDelivr.
+* **Testing:** `angular.json` includes a `test` target (`tsconfig.spec.json`) for `npm test`, and `@capacitor-community/text-to-speech` is aligned to `^6.0.0` for Capacitor 6.
