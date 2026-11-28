@@ -112,13 +112,14 @@ import { Book, Chapter } from '../../core/models/app-config.model';
             <ion-label class="ion-text-wrap chapter-title-label">
               <h2 class="chapter-primary-title">{{ localize(chapter.title) }}</h2>
               <p *ngIf="chapter.subtitle" class="chapter-subtitle-text">{{ localize(chapter.subtitle) }}</p>
-              <p class="audio-available-hint">
+              <p class="audio-available-hint" *ngIf="shouldShowMediaBadge(chapter)">
                 <ion-icon [name]="hasRecordedAudio(chapter) ? 'volume-high-outline' : 'mic-outline'" class="audio-status-icon"></ion-icon>
                 <span>{{ getAudioBadgeLabel(chapter) }}</span>
               </p>
             </ion-label>
 
             <ion-icon
+              *ngIf="shouldShowMediaBadge(chapter)"
               slot="end"
               [name]="hasRecordedAudio(chapter) ? 'play-circle-outline' : 'mic-outline'"
               color="primary"
@@ -474,9 +475,14 @@ export class ChaptersPage implements OnInit, OnDestroy {
   }
 
   public hasRecordedAudio(chapter: Chapter): boolean {
+    if (!this.dataService.isAudioEnabledSnapshot()) return false;
     if (!chapter?.audioUrl) return false;
     const rawUrl = this.dataService.localizeField(chapter.audioUrl, this.currentLang);
     return !!(rawUrl && rawUrl.trim().length > 0);
+  }
+
+  public shouldShowMediaBadge(chapter: Chapter): boolean {
+    return this.hasRecordedAudio(chapter) || this.dataService.isTtsEnabledSnapshot();
   }
 
   public getAudioBadgeLabel(chapter: Chapter): string {
