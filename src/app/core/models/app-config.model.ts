@@ -16,6 +16,12 @@ export interface ThemeColors {
   textSecondary?: string;
 }
 
+export interface TenantFeatures {
+  enableTts?: boolean;      // Default true; set false for educational orgs that don't want TTS
+  enableAudio?: boolean;    // Default true; set false to hide recorded audio dock too
+  enableCalendar?: boolean; // Default true; set false to hide Calendar/Tippani in sidebar
+}
+
 export interface AppIdentity {
   appName: Record<string, string>;
   defaultAppName: string;
@@ -24,6 +30,8 @@ export interface AppIdentity {
   mediaBaseUrl?: string;
   developerCredit?: string;
   footerCredit?: string;
+  enableTts?: boolean;      // Optional shorthand alias for features.enableTts
+  features?: TenantFeatures;
   theme: ThemeColors;
 }
 
@@ -94,16 +102,18 @@ export interface NotificationSchedule {
 
 export interface BannerItem {
   id?: string;
+  order?: number;
   date?: string; // YYYY-MM-DD
   startDate?: string; // YYYY-MM-DD
   endDate?: string; // YYYY-MM-DD
   isEnabled?: boolean;
   isDefault?: boolean;
-  isNew?: boolean; // NEW: Highlights banner with a pulsating "NEW" tag
+  isNew?: boolean; // Highlights banner with a "NEW" tag
   message: LocalizedStringMap;
-  targetBookId?: string; // NEW: Routes directly to book or chapter
-  targetChapterId?: string; // NEW: Direct chapter link
-  actionLabel?: LocalizedStringMap; // NEW: Button text e.g. "Read Now" / "पढ़ें"
+  targetBookId?: string; // Routes directly to book or chapter
+  targetChapterId?: string; // Direct chapter link
+  url?: string; // Internal route (e.g. "/tippani") or external https:// link
+  actionLabel?: LocalizedStringMap; // Button text e.g. "Read Now" / "पढ़ें"
 }
 
 export interface AdvertisementItem {
@@ -114,7 +124,7 @@ export interface AdvertisementItem {
   fromDate?: string; // YYYY-MM-DD
   toDate?: string; // YYYY-MM-DD
   url?: string;
-  imagePath?: string; // e.g. "src/assets/image/advertisement/<uniqueName>"
+  imagePath?: string; // e.g. "images/advertisement/<uniqueName>"
 }
 
 export interface CalendarEventItem {
@@ -122,6 +132,9 @@ export interface CalendarEventItem {
   title: LocalizedStringMap | string;
   description?: LocalizedStringMap | string;
   time?: string;
+  category?: string; // Optional e.g. "exam", "holiday", "utsav", "academic", "event"
+  color?: string;    // Optional hex badge color
+  endDate?: string;  // Optional YYYY-MM-DD for multi-day academic events/exams
   targetBookId?: string;
   targetChapterId?: string;
 }
@@ -131,6 +144,7 @@ export interface CalendarDayEntry {
   day: number; // 1..31 (normal Gregorian day)
   hinduDay?: LocalizedStringMap | string; // e.g. "Ekadashi" / "एकादशी"
   hinduTithiShort?: LocalizedStringMap | string; // Optional short grid label e.g. "शु. 11"
+  shortLabel?: LocalizedStringMap | string; // Optional generic cell label for College/Academic events e.g. "Exam"
   paksha?: 'shukla' | 'krishna' | string;
   isHighlighted?: boolean;
   highlight?: boolean; // Alias supported gracefully
@@ -141,10 +155,9 @@ export interface CalendarMonthPayload {
   year: number;
   month: number; // 1..12
   monthName?: string;
-  hinduMonth?: LocalizedStringMap | string; // e.g. "Kartik / Paush"
+  hinduMonth?: LocalizedStringMap | string; // Optional e.g. "Kartik / Paush"
   days: CalendarDayEntry[];
 }
-
 
 export interface AuthConfig {
   enabled: boolean;
