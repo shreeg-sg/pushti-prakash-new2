@@ -21,7 +21,7 @@ export class BackButtonService implements OnDestroy {
   private backButtonSub?: Subscription;
   private lastBackPressTimestamp = 0;
   private readonly EXIT_CONFIRM_WINDOW_MS = 2000;
-  private readonly ROOT_PATHS = ['/dashboard', '/onboarding', '/'];
+  private readonly ROOT_PATHS = ['/dashboard', '/onboarding', '/login', '/'];
 
   constructor(
     private platform: Platform,
