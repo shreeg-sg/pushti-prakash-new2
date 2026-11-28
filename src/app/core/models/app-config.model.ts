@@ -22,6 +22,8 @@ export interface AppIdentity {
   logoUrl: string;
   watermarkUrl: string;
   mediaBaseUrl?: string;
+  developerCredit?: string;
+  footerCredit?: string;
   theme: ThemeColors;
 }
 
@@ -72,6 +74,8 @@ export interface Book {
   coverImageUrl: string;
   title: LocalizedStringMap;
   subtitle?: LocalizedStringMap;
+  chapterCount?: number;
+  chaptersUrl?: string;
   chapters: Chapter[];
 }
 
@@ -90,21 +94,16 @@ export interface NotificationSchedule {
 
 export interface BannerItem {
   id?: string;
-  order?: number; // Optional display priority (lower appears first)
   date?: string; // YYYY-MM-DD
   startDate?: string; // YYYY-MM-DD
   endDate?: string; // YYYY-MM-DD
-  fromDate?: string; // Alias for startDate (YYYY-MM-DD)
-  toDate?: string; // Alias for endDate (YYYY-MM-DD)
-  dateLabel?: LocalizedStringMap | string; // Optional custom date badge label
   isEnabled?: boolean;
   isDefault?: boolean;
-  isNew?: boolean; // Highlights banner with a pulsating "NEW" badge
+  isNew?: boolean; // NEW: Highlights banner with a pulsating "NEW" tag
   message: LocalizedStringMap;
-  targetBookId?: string; // Routes directly to book or chapter
-  targetChapterId?: string; // Direct chapter link
-  url?: string; // External https:// link OR internal app route (e.g. "/tippani")
-  actionLabel?: LocalizedStringMap; // Button text e.g. "Read Now" / "पढ़ें"
+  targetBookId?: string; // NEW: Routes directly to book or chapter
+  targetChapterId?: string; // NEW: Direct chapter link
+  actionLabel?: LocalizedStringMap; // NEW: Button text e.g. "Read Now" / "पढ़ें"
 }
 
 export interface AdvertisementItem {
@@ -115,7 +114,7 @@ export interface AdvertisementItem {
   fromDate?: string; // YYYY-MM-DD
   toDate?: string; // YYYY-MM-DD
   url?: string;
-  imagePath?: string; // e.g. "images/advertisement/<uniqueName>"
+  imagePath?: string; // e.g. "src/assets/image/advertisement/<uniqueName>"
 }
 
 export interface CalendarEventItem {
@@ -146,6 +145,25 @@ export interface CalendarMonthPayload {
   days: CalendarDayEntry[];
 }
 
+
+export interface AuthConfig {
+  enabled: boolean;
+  tenantId?: string;
+  supabaseUrl: string;
+  supabaseAnonKey: string;
+  inactivityExpiryDays?: number;
+  requireUniqueId?: boolean;
+  uniqueIdSource?: 'supabase' | 'json';
+  uniqueIdJsonPath?: string;
+  uniqueIdLabel?: LocalizedStringMap;
+  fields?: {
+    name?: { required?: boolean };
+    email?: { required?: boolean };
+    mobile?: { required?: boolean };
+    state?: { required?: boolean };
+  };
+}
+
 export interface AppConfigPayload {
   schemaVersion: number;
   lastUpdatedIso: string;
@@ -157,6 +175,7 @@ export interface AppConfigPayload {
   books: Book[];
   notification_schedules?: NotificationSchedule[];
   advertisements?: AdvertisementItem[] | any;
+  auth_config?: AuthConfig | null;
 }
 
 export type AppConfig = AppConfigPayload;
