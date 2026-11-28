@@ -1,0 +1,120 @@
+<ion-content class="ion-padding login-bg">
+  <div class="login-wrapper" *ngIf="(uiText$ | async) as uiText">
+    <ion-card class="login-card">
+      <div class="logo-stage" *ngIf="(identity$ | async)?.logoUrl as logo">
+        <img [src]="dataService.resolveMediaUrl(logo)" alt="App Logo" class="login-logo" />
+      </div>
+
+      <ion-card-header class="login-header">
+        <ion-card-title class="login-title">
+          {{ uiText?.['login_title'] || 'Sign In to Continue' }}
+        </ion-card-title>
+        <ion-card-subtitle class="login-subtitle">
+          {{ uiText?.['login_subtitle'] || 'One-time registration on this device' }}
+        </ion-card-subtitle>
+      </ion-card-header>
+
+      <ion-card-content>
+        <form (ngSubmit)="onSubmit(uiText)" novalidate>
+          <ion-item class="login-field" lines="none">
+            <ion-icon name="person-outline" slot="start" class="field-icon"></ion-icon>
+            <ion-label position="stacked">
+              {{ uiText?.['login_name_label'] || 'Full Name' }} *
+            </ion-label>
+            <ion-input
+              type="text"
+              name="name"
+              [(ngModel)]="name"
+              [disabled]="isSubmitting"
+              autocomplete="name"
+              placeholder="Enter full name"
+              required>
+            </ion-input>
+          </ion-item>
+
+          <ion-item class="login-field" lines="none">
+            <ion-icon name="mail-outline" slot="start" class="field-icon"></ion-icon>
+            <ion-label position="stacked">
+              {{ uiText?.['login_email_label'] || 'Email Address' }} *
+            </ion-label>
+            <ion-input
+              type="email"
+              name="email"
+              [(ngModel)]="email"
+              [disabled]="isSubmitting"
+              autocomplete="email"
+              inputmode="email"
+              placeholder="name@example.com"
+              required>
+            </ion-input>
+          </ion-item>
+
+          <ion-item class="login-field" lines="none">
+            <ion-icon name="call-outline" slot="start" class="field-icon"></ion-icon>
+            <ion-label position="stacked">
+              {{ uiText?.['login_mobile_label'] || 'Mobile Number' }} *
+            </ion-label>
+            <ion-input
+              type="tel"
+              name="mobile"
+              [(ngModel)]="mobile"
+              [disabled]="isSubmitting"
+              autocomplete="tel"
+              inputmode="tel"
+              placeholder="10-digit mobile number"
+              required>
+            </ion-input>
+          </ion-item>
+
+          <ion-item class="login-field" lines="none">
+            <ion-icon name="location-outline" slot="start" class="field-icon"></ion-icon>
+            <ion-label position="stacked">
+              {{ uiText?.['login_state_label'] || 'State' }} *
+            </ion-label>
+            <ion-input
+              type="text"
+              name="state"
+              [(ngModel)]="state"
+              [disabled]="isSubmitting"
+              placeholder="e.g. Maharashtra / Gujarat"
+              required>
+            </ion-input>
+          </ion-item>
+
+          <ion-item class="login-field" lines="none" *ngIf="requireUniqueId">
+            <ion-icon name="id-card-outline" slot="start" class="field-icon"></ion-icon>
+            <ion-label position="stacked">
+              {{ getUniqueIdLabel(uiText) }} *
+            </ion-label>
+            <ion-input
+              type="text"
+              name="uniqueId"
+              [(ngModel)]="uniqueId"
+              [disabled]="isSubmitting"
+              placeholder="Enter Unique ID"
+              required>
+            </ion-input>
+          </ion-item>
+
+          <div class="error-banner" *ngIf="errorMessage">
+            {{ errorMessage }}
+          </div>
+
+          <ion-button
+            type="submit"
+            expand="block"
+            size="large"
+            color="primary"
+            class="submit-btn ion-margin-top"
+            [disabled]="isSubmitting">
+            <ion-spinner *ngIf="isSubmitting" name="crescent" class="btn-spinner"></ion-spinner>
+            <span *ngIf="!isSubmitting">
+              {{ uiText?.['login_submit_button'] || 'Login & Continue' }}
+            </span>
+            <ion-icon *ngIf="!isSubmitting" slot="end" name="arrow-forward-outline"></ion-icon>
+          </ion-button>
+        </form>
+      </ion-card-content>
+    </ion-card>
+  </div>
+</ion-content>
