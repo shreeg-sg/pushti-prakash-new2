@@ -81,6 +81,12 @@ export class StorageService {
     return this.selectedLanguageSubject.value;
   }
 
+  /** Updates in-memory language for live onboarding preview without persisting onboarding completion. */
+  public previewLanguage(langCode: string): void {
+    if (!langCode) return;
+    this.selectedLanguageSubject.next(langCode);
+  }
+
   public async setLanguage(langCode: string): Promise<void> {
     if (!langCode) return;
     this.selectedLanguageSubject.next(langCode);
