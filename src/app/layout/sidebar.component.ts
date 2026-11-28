@@ -112,7 +112,7 @@ import { FooterComponent } from './footer.component';
           </ion-label>
         </ion-list-header>
 
-        <ion-accordion-group [value]="activeBookId$ | async">
+        <ion-accordion-group [value]="activeBookId$ | async" (ionChange)="onBookAccordionChange($event)">
           <ion-accordion
             *ngFor="let book of books; trackBy: trackByBookId"
             [value]="book.id"
@@ -314,4 +314,15 @@ export class SidebarComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.langSub?.unsubscribe();
   }
+
+  public onBookAccordionChange(event: any): void {
+    const val = event?.detail?.value;
+    const ids: string[] = Array.isArray(val) ? val : val ? [String(val)] : [];
+    for (const bookId of ids) {
+      if (bookId) {
+        this.dataService.ensureBookChaptersLoaded(bookId).catch(() => {});
+      }
+    }
+  }
+
 }
