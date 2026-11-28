@@ -1,0 +1,29 @@
+{
+  "enabled": true,
+  "tenantId": "pushtiprakash",
+  "supabaseUrl": "https://YOUR_PROJECT_REF.supabase.co",
+  "supabaseAnonKey": "YOUR_SUPABASE_ANON_KEY",
+  "inactivityExpiryDays": 30,
+  "requireUniqueId": false,
+  "uniqueIdSource": "supabase",
+  "uniqueIdJsonPath": "assets/pushtiprakash/uniqueId.json",
+  "uniqueIdLabel": {
+    "en": "Roll Number / Unique ID",
+    "hi": "रोल नंबर / यूनिक आईडी",
+    "gu": "રોલ નંબર / યુનિક આઈડી"
+  },
+  "fields": {
+    "name": {
+      "required": true
+    },
+    "email": {
+      "required": true
+    },
+    "mobile": {
+      "required": true
+    },
+    "state": {
+      "required": true
+    }
+  }
+}
