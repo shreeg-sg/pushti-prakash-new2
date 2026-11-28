@@ -16,7 +16,24 @@
 
       <ion-card-content>
         <form (ngSubmit)="onSubmit(uiText)" novalidate>
-          <ion-item class="login-field" lines="none">
+          <!-- Unique ID Field: Shown ONLY when requireUniqueId is true -->
+          <ion-item class="login-field" lines="none" *ngIf="requireUniqueId">
+            <ion-icon name="id-card-outline" slot="start" class="field-icon"></ion-icon>
+            <ion-label position="stacked">
+              {{ getUniqueIdLabel(uiText) }} *
+            </ion-label>
+            <ion-input
+              type="text"
+              name="uniqueId"
+              [(ngModel)]="uniqueId"
+              [disabled]="isSubmitting"
+              placeholder="Enter Unique ID"
+              required>
+            </ion-input>
+          </ion-item>
+
+          <!-- Full Name: Shown ONLY in open/Temple mode (requireUniqueId = false) -->
+          <ion-item class="login-field" lines="none" *ngIf="!requireUniqueId">
             <ion-icon name="person-outline" slot="start" class="field-icon"></ion-icon>
             <ion-label position="stacked">
               {{ uiText?.['login_name_label'] || 'Full Name' }} *
@@ -32,6 +49,7 @@
             </ion-input>
           </ion-item>
 
+          <!-- Email Address: Always mandatory (paired with Unique ID when requireUniqueId = true) -->
           <ion-item class="login-field" lines="none">
             <ion-icon name="mail-outline" slot="start" class="field-icon"></ion-icon>
             <ion-label position="stacked">
@@ -49,7 +67,8 @@
             </ion-input>
           </ion-item>
 
-          <ion-item class="login-field" lines="none">
+          <!-- Mobile Number: Shown ONLY in open/Temple mode (requireUniqueId = false) -->
+          <ion-item class="login-field" lines="none" *ngIf="!requireUniqueId">
             <ion-icon name="call-outline" slot="start" class="field-icon"></ion-icon>
             <ion-label position="stacked">
               {{ uiText?.['login_mobile_label'] || 'Mobile Number' }} *
@@ -66,7 +85,8 @@
             </ion-input>
           </ion-item>
 
-          <ion-item class="login-field" lines="none">
+          <!-- State: Shown ONLY in open/Temple mode (requireUniqueId = false) -->
+          <ion-item class="login-field" lines="none" *ngIf="!requireUniqueId">
             <ion-icon name="location-outline" slot="start" class="field-icon"></ion-icon>
             <ion-label position="stacked">
               {{ uiText?.['login_state_label'] || 'State' }} *
@@ -77,21 +97,6 @@
               [(ngModel)]="state"
               [disabled]="isSubmitting"
               placeholder="e.g. Maharashtra / Gujarat"
-              required>
-            </ion-input>
-          </ion-item>
-
-          <ion-item class="login-field" lines="none" *ngIf="requireUniqueId">
-            <ion-icon name="id-card-outline" slot="start" class="field-icon"></ion-icon>
-            <ion-label position="stacked">
-              {{ getUniqueIdLabel(uiText) }} *
-            </ion-label>
-            <ion-input
-              type="text"
-              name="uniqueId"
-              [(ngModel)]="uniqueId"
-              [disabled]="isSubmitting"
-              placeholder="Enter Unique ID"
               required>
             </ion-input>
           </ion-item>
