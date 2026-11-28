@@ -18,7 +18,8 @@ import {
   AboutInfo,
   NotificationSchedule,
   AdvertisementItem,
-  CalendarMonthPayload
+  CalendarMonthPayload,
+  AuthConfig
 } from '../models/app-config.model';
 import { ThemeService } from './theme.service';
 import { StorageService } from './storage.service';
@@ -29,13 +30,9 @@ export interface ActiveBannerView {
   id: string;
   messageHtml: string;
   isNew: boolean;
-  isDefault: boolean;
-  dateLabel?: string;
   targetBookId?: string;
   targetChapterId?: string;
-  url?: string;
   actionLabel?: string;
-  order: number;
 }
 
 export interface ChapterLoadedContent {
@@ -67,6 +64,7 @@ export class DataService implements OnDestroy {
   private readonly LAST_HOURLY_REFRESH_KEY = `app_last_hourly_refresh_${environment.clientKey}`;
   private readonly ASSET_VERSION_KEY = `app_asset_version_${environment.clientKey}`;
   private readonly CHAPTER_CACHE_PREFIX = `app_chapter_${environment.clientKey}_`;
+  private readonly BOOK_CHAPTERS_CACHE_PREFIX = `app_book_chapters_${environment.clientKey}_`;
 
   // 1 hour cooldown (in milliseconds) for manual swipe-down hard refresh based on system clock
   private readonly HOURLY_COOLDOWN_MS = 60 * 60 * 1000;
@@ -95,6 +93,8 @@ export class DataService implements OnDestroy {
   );
 
   private chapterContentCache = new Map<string, ChapterLoadedContent>();
+  private bookChaptersCache = new Map<string, Chapter[]>();
+  private bookChaptersInFlight = new Map<string, Promise<Chapter[]>>();
   private calendarMonthCache = new Map<string, CalendarMonthPayload | null>();
   private appStateListener?: PluginListenerHandle;
   private langNotifySub?: Subscription;
@@ -102,6 +102,14 @@ export class DataService implements OnDestroy {
   public readonly identity$: Observable<AppIdentity> = this.config$.pipe(
     map((cfg: AppConfig) => cfg.app_identity)
   );
+
+  public readonly authConfig$: Observable<AuthConfig | null> = this.config$.pipe(
+    map((cfg: AppConfig) => cfg.auth_config || null)
+  );
+
+  public getAuthConfigSnapshot(): AuthConfig | null {
+    return this.configSubject.value?.auth_config || null;
+  }
 
   public readonly activeBanners$: Observable<ActiveBannerView[]> = combineLatest([
     this.config$,
@@ -131,41 +139,33 @@ export class DataService implements OnDestroy {
       for (const item of bannerData) {
         if (!item || item.isEnabled === false) continue;
 
-        const exactDate = typeof item.date === 'string' ? item.date.trim() : '';
-        const startDate = typeof (item.startDate || item.fromDate) === 'string'
-          ? String(item.startDate || item.fromDate).trim()
-          : '';
-        const endDate = typeof (item.endDate || item.toDate) === 'string'
-          ? String(item.endDate || item.toDate).trim()
-          : '';
-
-        if (exactDate && exactDate !== 'default') {
-          if (exactDate === today) {
-            rawEligibleItems.push(item);
-          }
+        if (item.date && item.date === today) {
+          rawEligibleItems.push(item);
           continue;
         }
 
-        if (startDate || endDate) {
-          const isAfterStart = !startDate || today >= startDate;
-          const isBeforeEnd = !endDate || today <= endDate;
+        if (item.startDate || item.endDate) {
+          const start = item.startDate;
+          const end = item.endDate;
+          const isAfterStart = !start || today >= start;
+          const isBeforeEnd = !end || today <= end;
           if (isAfterStart && isBeforeEnd) {
             rawEligibleItems.push(item);
+            continue;
           }
-          continue;
         }
 
-        if (item.isDefault || exactDate === 'default') {
+        if (item.isDefault || item.date === 'default') {
           rawEligibleItems.push(item);
         }
       }
     } else if (typeof bannerData === 'object') {
       if (bannerData[today]) {
-        rawEligibleItems.push({ message: bannerData[today], date: today });
+        rawEligibleItems.push({ message: bannerData[today] });
       } else if (bannerData.default) {
-        rawEligibleItems.push({ message: bannerData.default, isDefault: true });
+        rawEligibleItems.push({ message: bannerData.default });
       } else {
-        rawEligibleItems.push({ message: bannerData, isDefault: true });
+        rawEligibleItems.push({ message: bannerData });
       }
     }
 
@@ -184,67 +184,18 @@ export class DataService implements OnDestroy {
           ? item.targetChapterId.trim()
           : undefined;
 
-        const rawUrl = typeof (item.url || item.targetUrl || item.link) === 'string'
-          ? String(item.url || item.targetUrl || item.link).trim()
-          : '';
-        let safeUrl: string | undefined;
-        if (rawUrl) {
-          if (rawUrl.startsWith('/') && !rawUrl.startsWith('//') && !rawUrl.includes('..')) {
-            safeUrl = rawUrl;
-          } else {
-            const extUrl = SecurityUtil.sanitizeExternalUrl(rawUrl, true);
-            if (extUrl) safeUrl = extUrl;
-          }
-        }
-
-        const isDefault = item.isDefault === true || item.date === 'default';
-        const customDateLabel = item.dateLabel
-          ? this.localizeFlexibleField(item.dateLabel, lang)
-          : '';
-        const autoDateLabel = !isDefault
-          ? this.formatBannerDateBadge(item.date, item.startDate || item.fromDate, item.endDate || item.toDate)
-          : '';
-        const orderNum = Number(item.order);
-
         results.push({
           id: item.id ? String(item.id) : `banner_${counter++}`,
           messageHtml: safeMsgHtml,
           isNew: item.isNew === true,
-          isDefault,
-          dateLabel: customDateLabel || autoDateLabel || undefined,
           targetBookId: cleanBookId,
           targetChapterId: cleanChapterId,
-          url: safeUrl,
-          actionLabel: item.actionLabel ? this.localizeField(item.actionLabel, lang) : undefined,
-          order: Number.isFinite(orderNum) ? orderNum : (isDefault ? 9999 : counter)
+          actionLabel: item.actionLabel ? this.localizeField(item.actionLabel, lang) : undefined
         });
       }
     }
 
-    // Prioritize explicit order -> NEW / date-based notifications -> default welcome banners
-    return results.sort((a, b) => {
-      if (a.isDefault !== b.isDefault) return a.isDefault ? 1 : -1;
-      if (a.order !== b.order) return a.order - b.order;
-      if (a.isNew !== b.isNew) return a.isNew ? -1 : 1;
-      return 0;
-    });
-  }
-
-  private formatBannerDateBadge(date?: string, startDate?: string, endDate?: string): string {
-    const fmt = (iso?: string): string => {
-      if (!iso || typeof iso !== 'string') return '';
-      const parts = iso.trim().split('-').map(Number);
-      if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) return '';
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const m = months[parts[1] - 1];
-      return m ? `${parts[2]} ${m}` : '';
-    };
-    const exact = fmt(date);
-    if (exact) return exact;
-    const s = fmt(startDate);
-    const e = fmt(endDate);
-    if (s && e) return s === e ? s : `${s} – ${e}`;
-    return s || e || '';
+    return results;
   }
 
   /**
@@ -301,7 +252,7 @@ export class DataService implements OnDestroy {
         fromDate: fromDate || undefined,
         toDate: toDate || undefined,
         url: typeof item.url === 'string' ? item.url.trim() : undefined,
-        imagePath: imagePath || `images/advertisement/${uniqueName}`
+        imagePath: imagePath || `src/assets/image/advertisement/${uniqueName}`
       });
     }
 
@@ -313,27 +264,20 @@ export class DataService implements OnDestroy {
    */
   public resolveAdImageUrl(ad: AdvertisementItem, useBundledFallback = false): string {
     if (!ad) return '';
-    const rawPath = (ad.imagePath || (ad.uniqueName ? `images/advertisement/${ad.uniqueName}` : '')).trim();
+    const rawPath = (ad.imagePath || (ad.uniqueName ? `src/assets/image/advertisement/${ad.uniqueName}` : '')).trim();
     if (!rawPath) return '';
 
     if (rawPath.startsWith('https://') || rawPath.startsWith('http://') || rawPath.startsWith('data:image/')) {
       return useBundledFallback ? '' : this.resolveMediaUrl(rawPath);
     }
 
-    // Normalize "src/assets/images/advertisement/...", "src/assets/image/...", or "advertisement/..." to "images/advertisement/..."
-    let cleaned = rawPath
+    // Normalize "src/assets/image/advertisement/..." or "assets/image/advertisement/..." to relative path under assets/
+    const cleaned = rawPath
       .replace(/^\/+/, '')
       .replace(/^src\/assets\//i, '')
-      .replace(/^assets\//i, '')
-      .replace(/^image\//i, 'images/');
+      .replace(/^assets\//i, '');
 
     if (!cleaned || cleaned.includes('..')) return '';
-
-    if (/^advertisement\//i.test(cleaned)) {
-      cleaned = `images/${cleaned}`;
-    } else if (!cleaned.includes('/')) {
-      cleaned = `images/advertisement/${cleaned}`;
-    }
 
     if (useBundledFallback) {
       return `assets/${cleaned}`;
@@ -358,15 +302,13 @@ export class DataService implements OnDestroy {
       return this.calendarMonthCache.get(cacheKey) ?? null;
     }
 
-    const folderCandidates = ['calendar', 'calender'];
+    const relativePath = `mock/calendar/${year}/${monthFile}.json`;
     let payload: CalendarMonthPayload | null = null;
 
-    // 1. Try remote CDN / provider first (canonical "calendar" with legacy "calender" fallback)
-    const cb = `_cb=${forceRefresh ? Date.now() : this.assetVersion}`;
-    for (const folder of folderCandidates) {
-      const relativePath = `mock/${folder}/${year}/${monthFile}.json`;
-      const remoteUrl = this.resolveMediaUrl(relativePath, false);
-      if (!remoteUrl) continue;
+    // 1. Try remote CDN / provider first
+    const remoteUrl = this.resolveMediaUrl(relativePath, false);
+    if (remoteUrl) {
+      const cb = `_cb=${forceRefresh ? Date.now() : this.assetVersion}`;
       const remoteRes = await this.fetchRemoteJson<any>(remoteUrl, cb, forceRefresh, null);
       if (remoteRes && typeof remoteRes === 'object' && (Array.isArray(remoteRes.days) || remoteRes.hinduMonth)) {
         payload = {
@@ -376,32 +318,28 @@ export class DataService implements OnDestroy {
           hinduMonth: remoteRes.hinduMonth,
           days: Array.isArray(remoteRes.days) ? remoteRes.days : []
         };
-        break;
       }
     }
 
     // 2. Fallback to locally bundled assets/mock/calendar/<year>/<month>.json
     if (!payload) {
-      const localBase = (environment.fallbackMockPath || 'assets/mock/').trim().replace(/\/+$/, '');
-      for (const folder of folderCandidates) {
-        try {
-          const localUrl = `${localBase}/${folder}/${year}/${monthFile}.json`;
-          const localRes = await firstValueFrom(
-            this.http.get<any>(localUrl).pipe(catchError(() => of(null)))
-          );
-          if (localRes && typeof localRes === 'object' && (Array.isArray(localRes.days) || localRes.hinduMonth)) {
-            payload = {
-              year: Number(localRes.year) || year,
-              month: Number(localRes.month) || (monthIndex + 1),
-              monthName: localRes.monthName || monthFile,
-              hinduMonth: localRes.hinduMonth,
-              days: Array.isArray(localRes.days) ? localRes.days : []
-            };
-            break;
-          }
-        } catch {
-          payload = null;
+      try {
+        const localBase = (environment.fallbackMockPath || 'assets/mock/').trim().replace(/\/+$/, '');
+        const localUrl = `${localBase}/calendar/${year}/${monthFile}.json`;
+        const localRes = await firstValueFrom(
+          this.http.get<any>(localUrl).pipe(catchError(() => of(null)))
+        );
+        if (localRes && typeof localRes === 'object' && (Array.isArray(localRes.days) || localRes.hinduMonth)) {
+          payload = {
+            year: Number(localRes.year) || year,
+            month: Number(localRes.month) || (monthIndex + 1),
+            monthName: localRes.monthName || monthFile,
+            hinduMonth: localRes.hinduMonth,
+            days: Array.isArray(localRes.days) ? localRes.days : []
+          };
         }
+      } catch {
+        payload = null;
       }
     }
 
@@ -576,7 +514,7 @@ export class DataService implements OnDestroy {
       // Preserve existing cached/bundled sections if any individual secondary JSON fails to load
       const existing = this.configSubject.value || (await this.loadBundledFallbackConfig());
 
-      const [identity, languages, ui, books, banner, about, schedules, advertisements] = await Promise.all([
+      const [identity, languages, ui, books, banner, about, schedules, advertisements, authConfig] = await Promise.all([
         this.fetchRemoteJson<AppIdentity | null>(this.buildProviderFileUrl(baseDir, 'app_identity.json'), cb, forceRefresh, null),
         this.fetchRemoteJson<SupportedLanguage[]>(
           this.buildProviderFileUrl(baseDir, 'supportedLanguages.json'),
@@ -614,6 +552,12 @@ export class DataService implements OnDestroy {
           cb,
           forceRefresh,
           existing?.advertisements || []
+        ),
+        this.fetchRemoteJson<AuthConfig | null>(
+          this.buildProviderFileUrl(baseDir, 'auth_config.json'),
+          cb,
+          forceRefresh,
+          existing?.auth_config || null
         )
       ]);
 
@@ -638,7 +582,8 @@ export class DataService implements OnDestroy {
         notification_schedules: Array.isArray(schedules) && schedules.length > 0
           ? schedules
           : (existing?.notification_schedules || []),
-        advertisements: advertisements ?? (existing?.advertisements || [])
+        advertisements: advertisements ?? (existing?.advertisements || []),
+        auth_config: authConfig ?? (existing?.auth_config || null)
       };
 
       const isUpdated = this.hasConfigChanged(this.configSubject.value, constructedConfig);
@@ -649,6 +594,7 @@ export class DataService implements OnDestroy {
         await Preferences.set({ key: this.ASSET_VERSION_KEY, value: this.assetVersion });
 
         this.chapterContentCache.clear();
+        this.bookChaptersCache.clear();
         this.calendarMonthCache.clear();
         await this.clearDiskChapterCache();
         await this.clearDiskAudioCache();
@@ -779,7 +725,7 @@ export class DataService implements OnDestroy {
         baseDir = `${baseDir}/`;
       }
 
-      const [identity, languages, ui, books, banner, about, schedules, advertisements] = await Promise.all([
+      const [identity, languages, ui, books, banner, about, schedules, advertisements, authConfig] = await Promise.all([
         firstValueFrom(this.http.get<AppIdentity>(`${baseDir}app_identity.json`).pipe(catchError(() => of(null)))),
         firstValueFrom(this.http.get<SupportedLanguage[]>(`${baseDir}supportedLanguages.json`).pipe(catchError(() => of([])))),
         firstValueFrom(this.http.get<UiTranslations>(`${baseDir}ui_translations.json`).pipe(catchError(() => of({})))),
@@ -787,7 +733,8 @@ export class DataService implements OnDestroy {
         firstValueFrom(this.http.get<any>(`${baseDir}updateBannerMessage.json`).pipe(catchError(() => of([])))),
         firstValueFrom(this.http.get<AboutInfo>(`${baseDir}about_info.json`).pipe(catchError(() => of({ description: {}, feedback_links: {} })))),
         firstValueFrom(this.http.get<NotificationSchedule[]>(`${baseDir}notification_schedules.json`).pipe(catchError(() => of([])))),
-        firstValueFrom(this.http.get<any>(`${baseDir}advertisement.json`).pipe(catchError(() => of([]))))
+        firstValueFrom(this.http.get<any>(`${baseDir}advertisement.json`).pipe(catchError(() => of([])))),
+        firstValueFrom(this.http.get<AuthConfig | null>(`${baseDir}auth_config.json`).pipe(catchError(() => of(null))))
       ]);
 
       if (!identity || typeof identity !== 'object' || !Array.isArray(books) || books.length === 0) {
@@ -804,7 +751,8 @@ export class DataService implements OnDestroy {
         updateBannerMessage: banner,
         about_info: about,
         notification_schedules: Array.isArray(schedules) ? schedules : [],
-        advertisements: advertisements || []
+        advertisements: advertisements || [],
+        auth_config: authConfig || null
       };
     } catch {
       return null;
@@ -991,12 +939,114 @@ export class DataService implements OnDestroy {
     return this.localizeField(value, lang);
   }
 
+  public async ensureBookChaptersLoaded(bookId: string, forceRefresh = false): Promise<Chapter[]> {
+    if (!bookId) return [];
+
+    const currentCfg = this.configSubject.value;
+    const targetBook = currentCfg?.books?.find(b => b.id === bookId);
+    if (!forceRefresh && targetBook?.chapters && targetBook.chapters.length > 0) {
+      return targetBook.chapters;
+    }
+
+    if (!forceRefresh && this.bookChaptersCache.has(bookId)) {
+      const cached = this.bookChaptersCache.get(bookId)!;
+      this.patchBookChaptersIntoConfig(bookId, cached);
+      return cached;
+    }
+
+    if (!forceRefresh && this.bookChaptersInFlight.has(bookId)) {
+      return this.bookChaptersInFlight.get(bookId)!;
+    }
+
+    const loadPromise = this.fetchAndCacheBookChapters(bookId, targetBook, forceRefresh)
+      .finally(() => this.bookChaptersInFlight.delete(bookId));
+    this.bookChaptersInFlight.set(bookId, loadPromise);
+    return loadPromise;
+  }
+
+  private async fetchAndCacheBookChapters(
+    bookId: string,
+    targetBook?: Book,
+    forceRefresh = false
+  ): Promise<Chapter[]> {
+    const cacheKey = `${this.BOOK_CHAPTERS_CACHE_PREFIX}${bookId}`;
+
+    if (!forceRefresh) {
+      try {
+        const { value } = await Preferences.get({ key: cacheKey });
+        if (value) {
+          const parsed = JSON.parse(value);
+          if (parsed && parsed.cachedVersion === this.assetVersion && Array.isArray(parsed.chapters)) {
+            this.bookChaptersCache.set(bookId, parsed.chapters);
+            this.patchBookChaptersIntoConfig(bookId, parsed.chapters);
+            return parsed.chapters;
+          }
+        }
+      } catch {}
+    }
+
+    const relPath = (targetBook?.chaptersUrl || `books/${bookId}.json`).trim().replace(/^assets\//, '');
+    const remoteUrl = this.resolveMediaUrl(relPath);
+    const localFallback = `assets/${relPath}`;
+
+    let payload: any = null;
+    if (remoteUrl && remoteUrl.startsWith('https://')) {
+      payload = await firstValueFrom(
+        this.http.get<any>(remoteUrl).pipe(timeout(10000), catchError(() => of(null)))
+      );
+    }
+
+    if (!payload) {
+      payload = await firstValueFrom(
+        this.http.get<any>(localFallback).pipe(timeout(4000), catchError(() => of(null)))
+      );
+    }
+
+    const rawChapters: Chapter[] = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.chapters)
+        ? payload.chapters
+        : [];
+
+    if (rawChapters.length > 0) {
+      this.bookChaptersCache.set(bookId, rawChapters);
+      try {
+        await Preferences.set({
+          key: cacheKey,
+          value: JSON.stringify({ cachedVersion: this.assetVersion, chapters: rawChapters })
+        });
+      } catch {}
+      this.patchBookChaptersIntoConfig(bookId, rawChapters);
+    }
+
+    return rawChapters;
+  }
+
+  private patchBookChaptersIntoConfig(bookId: string, chapters: Chapter[]): void {
+    const current = this.configSubject.value;
+    if (!current || !Array.isArray(current.books)) return;
+    const idx = current.books.findIndex(b => b.id === bookId);
+    if (idx === -1) return;
+
+    const existingLen = current.books[idx].chapters?.length || 0;
+    if (existingLen === chapters.length && existingLen > 0) return;
+
+    const updatedBooks = current.books.map((b, i) =>
+      i === idx ? { ...b, chapters, chapterCount: b.chapterCount ?? chapters.length } : b
+    );
+    this.configSubject.next({ ...current, books: updatedBooks });
+  }
+
   public getChapterStream(bookId: string, chapterId: string): Observable<{ book: Book; chapter: Chapter } | null> {
     return this.visibleBooks$.pipe(
       map((books: Book[]) => {
         const book = books.find((b: Book) => b.id === bookId);
         if (!book) return null;
 
+        if (!book.chapters || book.chapters.length === 0) {
+          this.ensureBookChaptersLoaded(bookId).catch(() => {});
+          return null;
+        }
         const chapter = book.chapters.find((c: Chapter) => c.id === chapterId);
         return chapter ? { book, chapter } : null;
       })
