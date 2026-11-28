@@ -28,10 +28,12 @@ import { SecurityUtil } from '../utils/security.util';
 
 export interface ActiveBannerView {
   id: string;
+  order?: number;
   messageHtml: string;
   isNew: boolean;
   targetBookId?: string;
   targetChapterId?: string;
+  url?: string;
   actionLabel?: string;
 }
 
@@ -111,6 +113,33 @@ export class DataService implements OnDestroy {
     return this.configSubject.value?.auth_config || null;
   }
 
+  public readonly ttsEnabled$: Observable<boolean> = this.identity$.pipe(
+    map((id: AppIdentity) => id?.features?.enableTts !== false && id?.enableTts !== false)
+  );
+
+  public readonly audioEnabled$: Observable<boolean> = this.identity$.pipe(
+    map((id: AppIdentity) => id?.features?.enableAudio !== false)
+  );
+
+  public readonly calendarEnabled$: Observable<boolean> = this.identity$.pipe(
+    map((id: AppIdentity) => id?.features?.enableCalendar !== false)
+  );
+
+  public isTtsEnabledSnapshot(): boolean {
+    const id = this.configSubject.value?.app_identity;
+    return id?.features?.enableTts !== false && id?.enableTts !== false;
+  }
+
+  public isAudioEnabledSnapshot(): boolean {
+    const id = this.configSubject.value?.app_identity;
+    return id?.features?.enableAudio !== false;
+  }
+
+  public isCalendarEnabledSnapshot(): boolean {
+    const id = this.configSubject.value?.app_identity;
+    return id?.features?.enableCalendar !== false;
+  }
+
   public readonly activeBanners$: Observable<ActiveBannerView[]> = combineLatest([
     this.config$,
     this.storageService.selectedLanguage$
@@ -184,18 +213,31 @@ export class DataService implements OnDestroy {
           ? item.targetChapterId.trim()
           : undefined;
 
+        let cleanUrl: string | undefined;
+        if (typeof item.url === 'string') {
+          const rawUrl = item.url.trim();
+          if (rawUrl.startsWith('/') && !rawUrl.startsWith('//')) {
+            cleanUrl = rawUrl;
+          } else {
+            const safeExt = SecurityUtil.sanitizeExternalUrl(rawUrl);
+            if (safeExt) cleanUrl = safeExt;
+          }
+        }
+        const orderNum = Number(item.order);
         results.push({
           id: item.id ? String(item.id) : `banner_${counter++}`,
+          order: Number.isFinite(orderNum) ? orderNum : 999,
           messageHtml: safeMsgHtml,
           isNew: item.isNew === true,
           targetBookId: cleanBookId,
           targetChapterId: cleanChapterId,
+          url: cleanUrl,
           actionLabel: item.actionLabel ? this.localizeField(item.actionLabel, lang) : undefined
         });
       }
     }
 
-    return results;
+    return results.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
   }
 
   /**
@@ -252,7 +294,7 @@ export class DataService implements OnDestroy {
         fromDate: fromDate || undefined,
         toDate: toDate || undefined,
         url: typeof item.url === 'string' ? item.url.trim() : undefined,
-        imagePath: imagePath || `src/assets/image/advertisement/${uniqueName}`
+        imagePath: imagePath || `images/advertisement/${uniqueName}`
       });
     }
 
@@ -264,14 +306,14 @@ export class DataService implements OnDestroy {
    */
   public resolveAdImageUrl(ad: AdvertisementItem, useBundledFallback = false): string {
     if (!ad) return '';
-    const rawPath = (ad.imagePath || (ad.uniqueName ? `src/assets/image/advertisement/${ad.uniqueName}` : '')).trim();
+    const rawPath = (ad.imagePath || (ad.uniqueName ? `images/advertisement/${ad.uniqueName}` : '')).trim();
     if (!rawPath) return '';
 
     if (rawPath.startsWith('https://') || rawPath.startsWith('http://') || rawPath.startsWith('data:image/')) {
       return useBundledFallback ? '' : this.resolveMediaUrl(rawPath);
     }
 
-    // Normalize "src/assets/image/advertisement/..." or "assets/image/advertisement/..." to relative path under assets/
+    // Normalize "src/assets/images/advertisement/..." or "assets/images/advertisement/..." to relative path under assets/
     const cleaned = rawPath
       .replace(/^\/+/, '')
       .replace(/^src\/assets\//i, '')
@@ -302,13 +344,17 @@ export class DataService implements OnDestroy {
       return this.calendarMonthCache.get(cacheKey) ?? null;
     }
 
-    const relativePath = `mock/calendar/${year}/${monthFile}.json`;
+    const candidatePaths = [
+      `mock/calendar/${year}/${monthFile}.json`,
+      `mock/calender/${year}/${monthFile}.json`
+    ];
     let payload: CalendarMonthPayload | null = null;
 
-    // 1. Try remote CDN / provider first
-    const remoteUrl = this.resolveMediaUrl(relativePath, false);
-    if (remoteUrl) {
-      const cb = `_cb=${forceRefresh ? Date.now() : this.assetVersion}`;
+    // 1. Try remote CDN / provider first (supports both calendar/ and legacy calender/ folder)
+    const cb = `_cb=${forceRefresh ? Date.now() : this.assetVersion}`;
+    for (const relPath of candidatePaths) {
+      const remoteUrl = this.resolveMediaUrl(relPath, false);
+      if (!remoteUrl) continue;
       const remoteRes = await this.fetchRemoteJson<any>(remoteUrl, cb, forceRefresh, null);
       if (remoteRes && typeof remoteRes === 'object' && (Array.isArray(remoteRes.days) || remoteRes.hinduMonth)) {
         payload = {
@@ -318,6 +364,7 @@ export class DataService implements OnDestroy {
           hinduMonth: remoteRes.hinduMonth,
           days: Array.isArray(remoteRes.days) ? remoteRes.days : []
         };
+        break;
       }
     }
 
@@ -666,7 +713,8 @@ export class DataService implements OnDestroy {
       'updateBannerMessage.json',
       'about_info.json',
       'notification_schedules.json',
-      'advertisement.json'
+      'advertisement.json',
+      'auth_config.json'
     ];
     await Promise.all(
       files.map(f =>
@@ -985,21 +1033,38 @@ export class DataService implements OnDestroy {
       } catch {}
     }
 
-    const relPath = (targetBook?.chaptersUrl || `books/${bookId}.json`).trim().replace(/^assets\//, '');
-    const remoteUrl = this.resolveMediaUrl(relPath);
-    const localFallback = `assets/${relPath}`;
+    const rawRel = (targetBook?.chaptersUrl || `mock/books/${bookId}.json`)
+      .trim()
+      .replace(/^\/+/, '')
+      .replace(/^src\/assets\//i, '')
+      .replace(/^assets\//i, '');
+    const candidatePaths = Array.from(
+      new Set([
+        rawRel,
+        rawRel.startsWith('mock/') ? rawRel.replace(/^mock\//, '') : `mock/${rawRel}`,
+        `mock/books/${bookId}.json`,
+        `books/${bookId}.json`
+      ].filter(p => !!p && !p.includes('..')))
+    );
 
     let payload: any = null;
-    if (remoteUrl && remoteUrl.startsWith('https://')) {
-      payload = await firstValueFrom(
-        this.http.get<any>(remoteUrl).pipe(timeout(10000), catchError(() => of(null)))
-      );
+    for (const rel of candidatePaths) {
+      const remoteUrl = this.resolveMediaUrl(rel);
+      if (remoteUrl && remoteUrl.startsWith('https://')) {
+        payload = await firstValueFrom(
+          this.http.get<any>(remoteUrl).pipe(timeout(10000), catchError(() => of(null)))
+        );
+        if (payload) break;
+      }
     }
 
     if (!payload) {
-      payload = await firstValueFrom(
-        this.http.get<any>(localFallback).pipe(timeout(4000), catchError(() => of(null)))
-      );
+      for (const rel of candidatePaths) {
+        payload = await firstValueFrom(
+          this.http.get<any>(`assets/${rel}`).pipe(timeout(4000), catchError(() => of(null)))
+        );
+        if (payload) break;
+      }
     }
 
     const rawChapters: Chapter[] = Array.isArray(payload)
