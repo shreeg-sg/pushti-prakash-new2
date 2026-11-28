@@ -15,10 +15,10 @@ export interface AuthSession {
   deviceId: string;
   accessToken: string;
   refreshToken: string;
-  name: string;
+  name: string | null;
   email: string;
-  mobile: string;
-  state: string;
+  mobile: string | null;
+  state: string | null;
   uniqueId?: string;
   loggedInAt: string;
   lastOpenedAt: string;
@@ -26,10 +26,10 @@ export interface AuthSession {
 }
 
 export interface LoginSubmission {
-  name: string;
+  name?: string;
   email: string;
-  mobile: string;
-  state: string;
+  mobile?: string;
+  state?: string;
   uniqueId?: string;
 }
 
@@ -148,6 +148,16 @@ export class AuthService {
   }
 
   /**
+   * Clears local session and navigates back to Login screen (for Switch Account / Logout).
+   */
+  public async logout(): Promise<void> {
+    await this.clearSession();
+    if (this.isLoginRequired()) {
+      await this.router.navigate(['/login'], { replaceUrl: true });
+    }
+  }
+
+  /**
    * Called on app startup after local hydration.
    * - Checks 30-day local expiry immediately.
    * - Once per calendar day, pings Supabase to update last_opened_at and verify session wasn't replaced.
@@ -208,10 +218,13 @@ export class AuthService {
 
   /**
    * Executes login flow:
-   * 1. Validates fields & optional Unique ID (either from assets/{tenantName}/uniqueId.json or Supabase DB)
-   * 2. Signs in anonymously to obtain a real Supabase JWT (auth.uid())
-   * 3. Checks if email/uniqueId is already active on another device (unless replaceExisting = true)
-   * 4. Calls complete_login RPC to activate user and record LOGIN / RE_LOGIN / SESSION_REPLACED in login_audit
+   * - When requireUniqueId === true (College/Org mode):
+   *     * Captures ONLY Unique ID + Email as mandatory; stores name/mobile/state as null
+   *     * Verifies BOTH Unique ID AND Email match (in JSON or Supabase DB) BEFORE session check
+   *     * Blocks login if Unique ID + Email is invalid
+   * - When requireUniqueId !== true (Temple/Open mode):
+   *     * Captures Name, Email, Mobile, State (Unique ID field not shown, no error thrown)
+   *     * Checks if email is active on another device before completing login
    */
   public async login(payload: LoginSubmission, replaceExisting = false): Promise<LoginResult> {
     await this.isReady();
@@ -220,27 +233,37 @@ export class AuthService {
       return { success: false, errorCode: 'CONFIG_MISSING', message: 'Login configuration is missing.' };
     }
 
-    const cleanName = (payload.name || '').trim();
-    const cleanEmail = (payload.email || '').trim().toLowerCase();
-    const cleanMobile = (payload.mobile || '').trim();
-    const cleanState = (payload.state || '').trim();
-    const cleanUniqueId = (payload.uniqueId || '').trim();
-
-    if (!cleanName || !this.isValidEmail(cleanEmail) || !this.isValidMobile(cleanMobile) || !cleanState) {
-      return { success: false, errorCode: 'INVALID_INPUT', message: 'Please fill all required fields with valid details.' };
-    }
-
     const requireUniqueId = cfg.requireUniqueId === true;
     const uniqueIdSource = cfg.uniqueIdSource || 'supabase';
 
-    if (requireUniqueId && !cleanUniqueId) {
-      return { success: false, errorCode: 'UNIQUE_ID_REQUIRED', message: 'Unique ID is required.' };
+    const cleanEmail = (payload.email || '').trim().toLowerCase();
+    const cleanUniqueId = requireUniqueId ? (payload.uniqueId || '').trim() : '';
+    const cleanName = requireUniqueId ? null : (payload.name || '').trim();
+    const cleanMobile = requireUniqueId ? null : (payload.mobile || '').trim();
+    const cleanState = requireUniqueId ? null : (payload.state || '').trim();
+
+    if (!this.isValidEmail(cleanEmail)) {
+      return { success: false, errorCode: 'INVALID_INPUT', message: 'Please enter a valid email address.' };
     }
 
-    if (requireUniqueId && uniqueIdSource === 'json') {
-      const jsonOk = await this.verifyUniqueIdFromJson(cfg, cleanUniqueId);
-      if (!jsonOk) {
-        return { success: false, errorCode: 'INVALID_UNIQUE_ID', message: 'Invalid Unique ID. Please check with your organization.' };
+    if (requireUniqueId) {
+      if (!cleanUniqueId) {
+        return { success: false, errorCode: 'UNIQUE_ID_REQUIRED', message: 'Unique ID is required.' };
+      }
+
+      if (uniqueIdSource === 'json') {
+        const jsonOk = await this.verifyUniqueIdAndEmailFromJson(cfg, cleanUniqueId, cleanEmail);
+        if (!jsonOk) {
+          return {
+            success: false,
+            errorCode: 'INVALID_UNIQUE_ID',
+            message: 'Invalid Unique ID or Email. Please verify with your organization.'
+          };
+        }
+      }
+    } else {
+      if (!cleanName || !this.isValidMobile(cleanMobile || '') || !cleanState) {
+        return { success: false, errorCode: 'INVALID_INPUT', message: 'Please fill all required fields with valid details.' };
       }
     }
 
@@ -252,7 +275,10 @@ export class AuthService {
 
       const tenantId = this.resolveTenantId(cfg);
 
-      if (!replaceExisting) {
+      // In open mode (requireUniqueId = false), pre-check existing session.
+      // In DB Unique ID mode, skip pre-check so complete_login validates unique_id + email FIRST
+      // before ever revealing whether an active session exists on another device.
+      if (!replaceExisting && !(requireUniqueId && uniqueIdSource === 'supabase')) {
         const check = await this.callRpc<{ exists: boolean; same_device: boolean }>(
           cfg,
           authTokens.access_token,
@@ -302,9 +328,10 @@ export class AuthService {
         return {
           success: false,
           errorCode: (result?.error as any) || 'INVALID_INPUT',
-          message: result?.error === 'INVALID_UNIQUE_ID'
-            ? 'Invalid Unique ID. Please check with your organization.'
-            : 'Unable to complete login.'
+          message:
+            result?.error === 'INVALID_UNIQUE_ID'
+              ? 'Invalid Unique ID or Email. Please verify with your organization.'
+              : 'Unable to complete login.'
         };
       }
 
@@ -338,23 +365,50 @@ export class AuthService {
     }
   }
 
-  private async verifyUniqueIdFromJson(cfg: AuthConfig, candidateId: string): Promise<boolean> {
+  /**
+   * Verifies Unique ID + Email pair against remote/local uniqueId.json.
+   * Normalizes paths safely (preventing double assets/assets/) and tries both
+   * mock/{tenantName}/uniqueId.json and {tenantName}/uniqueId.json for backward compatibility.
+   */
+  private async verifyUniqueIdAndEmailFromJson(
+    cfg: AuthConfig,
+    candidateId: string,
+    candidateEmail: string
+  ): Promise<boolean> {
     const tenantName = this.resolveTenantId(cfg);
-    const relPath = (cfg.uniqueIdJsonPath || `assets/${tenantName}/uniqueId.json`).trim();
-    const remoteUrl = this.dataService.resolveMediaUrl(relPath);
-    const localFallbackUrl = relPath.startsWith('assets/') ? relPath : `assets/${tenantName}/uniqueId.json`;
+    const rawRel = (cfg.uniqueIdJsonPath || `mock/${tenantName}/uniqueId.json`).trim();
+    const cleanedRel = rawRel
+      .replace(/^\/+/, '')
+      .replace(/^src\/assets\//i, '')
+      .replace(/^assets\//i, '');
+
+    const candidateRelPaths = Array.from(
+      new Set([
+        cleanedRel,
+        cleanedRel.startsWith('mock/') ? cleanedRel.replace(/^mock\//, '') : `mock/${cleanedRel}`,
+        `mock/${tenantName}/uniqueId.json`,
+        `${tenantName}/uniqueId.json`
+      ].filter(p => !!p && !p.includes('..')))
+    );
 
     let data: any = null;
-    if (remoteUrl && remoteUrl.startsWith('https://')) {
-      data = await firstValueFrom(
-        this.http.get<any>(remoteUrl).pipe(timeout(6000), catchError(() => of(null)))
-      );
+    for (const rel of candidateRelPaths) {
+      const remoteUrl = this.dataService.resolveMediaUrl(rel, true);
+      if (remoteUrl && remoteUrl.startsWith('https://')) {
+        data = await firstValueFrom(
+          this.http.get<any>(remoteUrl).pipe(timeout(6000), catchError(() => of(null)))
+        );
+        if (data) break;
+      }
     }
 
     if (!data) {
-      data = await firstValueFrom(
-        this.http.get<any>(localFallbackUrl).pipe(timeout(3000), catchError(() => of(null)))
-      );
+      for (const rel of candidateRelPaths) {
+        data = await firstValueFrom(
+          this.http.get<any>(`assets/${rel}`).pipe(timeout(3000), catchError(() => of(null)))
+        );
+        if (data) break;
+      }
     }
 
     if (!data) return false;
@@ -367,15 +421,17 @@ export class AuthService {
           ? data.uniqueIds
           : [];
 
-    const target = candidateId.trim().toLowerCase();
+    const targetId = candidateId.trim().toLowerCase();
+    const targetEmail = candidateEmail.trim().toLowerCase();
+
     return list.some(item => {
-      if (typeof item === 'string' || typeof item === 'number') {
-        return String(item).trim().toLowerCase() === target;
-      }
       if (item && typeof item === 'object') {
         if (item.active === false || item.isActive === false) return false;
-        const val = item.id ?? item.uniqueId ?? item.rollNo ?? '';
-        return String(val).trim().toLowerCase() === target;
+        const valId = String(item.id ?? item.uniqueId ?? item.rollNo ?? '').trim().toLowerCase();
+        const valEmail = String(item.email ?? '').trim().toLowerCase();
+        if (!valId || valId !== targetId) return false;
+        // Require email to match when email is present on record (strict Unique ID + Email pairing)
+        return !!valEmail && valEmail === targetEmail;
       }
       return false;
     });
