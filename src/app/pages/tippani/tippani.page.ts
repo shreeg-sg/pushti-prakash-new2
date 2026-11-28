@@ -47,6 +47,8 @@ interface SelectedDateEventView {
   title: string;
   description?: string;
   time?: string;
+  category?: string;
+  color?: string;
   targetBookId?: string;
   targetChapterId?: string;
 }
@@ -135,18 +137,20 @@ interface SelectedDateEventView {
               [class.is-today]="cell.isToday"
               [class.is-selected]="cell.isSelected"
               [class.is-highlighted]="cell.isHighlighted && cell.isCurrentMonth"
+              [class.no-sublabel]="!cell.hinduShortLabel"
               [disabled]="!cell.isCurrentMonth"
               (click)="selectDate(cell)">
               <ng-container *ngIf="cell.isCurrentMonth">
-                <!-- 65% Primary Gregorian Date -->
+                <!-- Primary Gregorian Date (expands to 100% when no Hindu tithi or shortLabel is set) -->
                 <div class="cell-primary-date">
                   <span class="gregorian-day-num">{{ cell.dayNumber }}</span>
                   <span class="event-indicator-dot" *ngIf="cell.hasEvents"></span>
                 </div>
 
-                <!-- 35% Optional Hindu Calendar Tithi / Paksha -->
+                <!-- Optional Hindu Tithi / Academic Short Label -->
                 <div
                   class="cell-hindu-tithi"
+                  *ngIf="cell.hinduShortLabel"
                   [class.paksha-shukla]="cell.paksha === 'shukla'"
                   [class.paksha-krishna]="cell.paksha === 'krishna'">
                   {{ cell.hinduShortLabel }}
@@ -186,7 +190,16 @@ interface SelectedDateEventView {
                       <ion-icon name="sparkles-outline" class="event-icon"></ion-icon>
                       <span class="event-title">{{ evt.title }}</span>
                     </div>
-                    <span class="event-time-badge" *ngIf="evt.time">{{ evt.time }}</span>
+                    <div class="event-badges-right">
+                      <span
+                        class="event-category-badge"
+                        *ngIf="evt.category"
+                        [style.borderColor]="evt.color || null"
+                        [style.color]="evt.color || null">
+                        {{ evt.category }}
+                      </span>
+                      <span class="event-time-badge" *ngIf="evt.time">{{ evt.time }}</span>
+                    </div>
                   </div>
 
                   <p class="event-description" *ngIf="evt.description">
@@ -413,7 +426,7 @@ interface SelectedDateEventView {
       color: var(--ion-color-primary-contrast, #ffffff);
     }
 
-    /* 65% Primary Gregorian Date */
+    /* 65% Primary Gregorian Date (centers cleanly at 100% when no tithi/shortLabel) */
     .cell-primary-date {
       flex: 0 0 65%;
       width: 100%;
@@ -421,6 +434,10 @@ interface SelectedDateEventView {
       align-items: center;
       justify-content: center;
       position: relative;
+    }
+
+    .date-cell.no-sublabel .cell-primary-date {
+      flex: 1 1 100%;
     }
 
     .gregorian-day-num {
@@ -592,6 +609,26 @@ interface SelectedDateEventView {
       font-weight: 700;
       color: var(--ion-text-color, #2c1810);
       line-height: 1.35;
+    }
+
+    .event-badges-right {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 0;
+    }
+
+    .event-category-badge {
+      font-size: 0.66rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      color: var(--ion-color-secondary-shade, var(--ion-color-primary));
+      border: 1px solid rgba(var(--ion-color-primary-rgb), 0.35);
+      background: rgba(var(--ion-color-primary-rgb), 0.06);
+      padding: 1px 6px;
+      border-radius: 6px;
+      white-space: nowrap;
     }
 
     .event-time-badge {
@@ -894,9 +931,12 @@ export class TippaniPage implements OnInit, OnDestroy {
         : '';
       const hinduShort = entry?.hinduTithiShort
         ? this.dataService.localizeFlexibleField(entry.hinduTithiShort, this.currentLang)
-        : this.buildCompactTithi(hinduFull, pakshaNorm);
+        : entry?.shortLabel
+          ? this.dataService.localizeFlexibleField(entry.shortLabel, this.currentLang)
+          : this.buildCompactTithi(hinduFull, pakshaNorm);
 
       const jsonEventsCount = Array.isArray(entry?.events) ? entry!.events!.length : 0;
+      const rangeEventsCount = this.getMultiDayRangeEventsForDate(dateKey).length;
       const scheduleEventsCount = this.getScheduledNotificationsForDate(dateKey).length;
 
       cells.push({
@@ -908,8 +948,8 @@ export class TippaniPage implements OnInit, OnDestroy {
         hinduShortLabel: hinduShort,
         hinduFullLabel: hinduFull,
         paksha: pakshaNorm,
-        isHighlighted: entry?.isHighlighted === true || entry?.highlight === true,
-        hasEvents: jsonEventsCount > 0 || scheduleEventsCount > 0,
+        isHighlighted: entry?.isHighlighted === true || entry?.highlight === true || rangeEventsCount > 0,
+        hasEvents: jsonEventsCount > 0 || rangeEventsCount > 0 || scheduleEventsCount > 0,
         dayEntry: entry
       });
     }
@@ -984,6 +1024,8 @@ export class TippaniPage implements OnInit, OnDestroy {
               title,
               description: this.dataService.localizeFlexibleField(evtObj.description, this.currentLang) || undefined,
               time: evtObj.time || undefined,
+              category: evtObj.category || undefined,
+              color: evtObj.color || undefined,
               targetBookId: evtObj.targetBookId || undefined,
               targetChapterId: evtObj.targetChapterId || undefined
             });
@@ -991,6 +1033,24 @@ export class TippaniPage implements OnInit, OnDestroy {
         }
       });
     }
+
+    // Append multi-day academic/org range events (where start day <= selectedDateKey <= endDate)
+    const rangeEvents = this.getMultiDayRangeEventsForDate(this.selectedDateKey);
+    rangeEvents.forEach((evtObj, idx) => {
+      const title = this.dataService.localizeFlexibleField(evtObj.title, this.currentLang);
+      if (!title || seenTitles.has(title.toLowerCase())) return;
+      seenTitles.add(title.toLowerCase());
+      events.push({
+        id: evtObj.id ? `${evtObj.id}_range_${this.selectedDateKey}` : `range_${this.selectedDateKey}_${idx}`,
+        title,
+        description: this.dataService.localizeFlexibleField(evtObj.description, this.currentLang) || undefined,
+        time: evtObj.time || undefined,
+        category: evtObj.category || undefined,
+        color: evtObj.color || undefined,
+        targetBookId: evtObj.targetBookId || undefined,
+        targetChapterId: evtObj.targetChapterId || undefined
+      });
+    });
 
     // Append date-specific notifications from notification_schedules.json if not duplicated
     const scheduled = this.getScheduledNotificationsForDate(this.selectedDateKey);
@@ -1011,6 +1071,26 @@ export class TippaniPage implements OnInit, OnDestroy {
     }
 
     this.selectedDateEvents = events;
+  }
+
+  private getMultiDayRangeEventsForDate(dateKey: string): CalendarEventItem[] {
+    const matched: CalendarEventItem[] = [];
+    const days = this.currentMonthPayload?.days;
+    if (!Array.isArray(days)) return matched;
+    for (const d of days) {
+      if (!d || !Array.isArray(d.events)) continue;
+      const startKey = d.id || this.formatDateKey(this.viewYear, this.viewMonth, Number(d.day));
+      if (!startKey || startKey === dateKey || dateKey < startKey) continue;
+      for (const rawEvt of d.events) {
+        if (rawEvt && typeof rawEvt === 'object' && (rawEvt as CalendarEventItem).endDate) {
+          const endKey = String((rawEvt as CalendarEventItem).endDate).trim();
+          if (endKey && dateKey <= endKey) {
+            matched.push(rawEvt as CalendarEventItem);
+          }
+        }
+      }
+    }
+    return matched;
   }
 
   private getScheduledNotificationsForDate(dateKey: string): NotificationSchedule[] {
