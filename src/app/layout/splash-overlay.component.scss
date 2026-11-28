@@ -1,0 +1,188 @@
+.splash-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ion-background-color, #fffdf9);
+  opacity: 1;
+  transition: opacity 0.45s ease;
+  padding: env(safe-area-inset-top, 16px) 24px env(safe-area-inset-bottom, 16px);
+
+  &.fade-out {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+.splash-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.book-stage {
+  position: relative;
+  width: 148px;
+  height: 132px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.book-svg {
+  position: absolute;
+  bottom: 4px;
+  width: 142px;
+  height: 84px;
+}
+
+.book-left-page,
+.book-right-page {
+  fill: var(--ion-card-background, #fff8ec);
+  stroke: var(--ion-color-primary, #8b2635);
+}
+
+.book-left-page {
+  transform-origin: 59px 54px;
+  animation: pageLeftOpen 1.05s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.book-right-page {
+  transform-origin: 59px 54px;
+  animation: pageRightOpen 1.05s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.book-spine {
+  stroke: var(--ion-color-secondary, #d4af37);
+}
+
+.book-logo-rise {
+  width: 82px;
+  height: 82px;
+  border-radius: 20px;
+  background: #ffffff;
+  padding: 8px;
+  box-shadow: 0 10px 26px rgba(var(--ion-color-primary-rgb, 139, 38, 53), 0.18);
+  border: 2px solid var(--ion-color-secondary, #d4af37);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  opacity: 0;
+  transform: translateY(24px) scale(0.75);
+  animation: logoRise 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.42s forwards;
+}
+
+.splash-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+.book-title-reveal {
+  margin-top: 16px;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: fadeUpIn 0.6s ease 0.95s forwards;
+}
+
+.splash-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.25px;
+  color: var(--ion-color-primary, #8b2635);
+}
+
+.progress-track {
+  width: 146px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(var(--ion-color-primary-rgb, 139, 38, 53), 0.14);
+  margin-top: 20px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--ion-color-primary, #8b2635),
+    var(--ion-color-secondary, #d4af37)
+  );
+  animation: progressFill 2.8s ease-out forwards;
+}
+
+.splash-backdrop.slow-mode .progress-bar {
+  width: 45%;
+  animation: progressIndeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes pageLeftOpen {
+  0% {
+    transform: scaleX(0.15) skewY(12deg);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scaleX(1) skewY(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes pageRightOpen {
+  0% {
+    transform: scaleX(0.15) skewY(-12deg);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scaleX(1) skewY(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes logoRise {
+  0% {
+    opacity: 0;
+    transform: translateY(24px) scale(0.75);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(-10px) scale(1);
+  }
+}
+
+@keyframes fadeUpIn {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes progressFill {
+  0% {
+    width: 0%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+@keyframes progressIndeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
+}
