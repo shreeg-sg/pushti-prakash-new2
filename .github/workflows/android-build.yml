@@ -40,6 +40,11 @@ on:
         required: true
         default: '2'
         type: string
+      allow_adhoc_signing:
+        description: 'Allow temporary self-signed keystore when GitHub Secrets are not set (Debug/Test ONLY)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build-client-android:
@@ -63,7 +68,7 @@ jobs:
           java-version: '17'
 
       - name: Install NPM Dependencies
-        run: npm ci
+        run: npm ci || npm install --no-audit --no-fund
 
       - name: Inject Client Config URL & Version into environment.prod.ts
         env:
@@ -71,10 +76,34 @@ jobs:
           FIREBASE_URL: ${{ inputs.firebase_config_url }}
           BUILD_VERSION: ${{ inputs.build_version }}
         run: |
-          sed -i "s|__CLIENT_KEY__|${CLIENT_KEY}|g" src/environments/environment.prod.ts
-          sed -i "s|__FIREBASE_CONFIG_URL__|${FIREBASE_URL}|g" src/environments/environment.prod.ts
-          sed -i "s|__BUILD_VERSION__|${BUILD_VERSION}|g" src/environments/environment.prod.ts
+          node -e '
+            const fs = require("fs");
+            const path = "src/environments/environment.prod.ts";
+            let content = fs.readFileSync(path, "utf8");
+            const safeStr = (val) => String(val || "").replace(/\\/g, "\\\\").replace(/\x27/g, "\\\x27");
+            content = content.replace(/__CLIENT_KEY__/g, safeStr(process.env.CLIENT_KEY));
+            content = content.replace(/__FIREBASE_CONFIG_URL__/g, safeStr(process.env.FIREBASE_URL));
+            content = content.replace(/__BUILD_VERSION__/g, safeStr(process.env.BUILD_VERSION));
+            fs.writeFileSync(path, content, "utf8");
+          '
           cat src/environments/environment.prod.ts
+          APP_NAME="${{ inputs.app_name }}" FIREBASE_URL="${{ inputs.firebase_config_url }}" node -e '
+            const fs = require("fs");
+            const idxPath = "src/index.html";
+            let html = fs.readFileSync(idxPath, "utf8");
+            const appName = String(process.env.APP_NAME || "").trim();
+            if (appName) {
+              const esc = appName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+              html = html.replace(/<title>.*?<\/title>/, `<title>${esc}</title>`);
+            }
+            try {
+              const origin = new URL(process.env.FIREBASE_URL || "").origin;
+              if (origin && origin.startsWith("https://") && !html.includes(origin)) {
+                html = html.replace(/https:\/\/cdn\.jsdelivr\.net/g, `https://cdn.jsdelivr.net ${origin}`);
+              }
+            } catch {}
+            fs.writeFileSync(idxPath, html, "utf8");
+          '
 
       - name: Stamp Client App ID and Name in Capacitor Config
         env:
@@ -92,47 +121,100 @@ jobs:
       - name: Build Angular Production Web Bundle
         run: npm run build -- --configuration=production
 
-      - name: Sync Capacitor Android Project
+      - name: Sync Capacitor Android Project & Permissions
         env:
+          APP_ID: ${{ inputs.app_id }}
           APP_NAME: ${{ inputs.app_name }}
         run: |
           if [ ! -d "android" ]; then
             npx cap add android
           fi
           npx cap sync android
-          if [ -f "android/app/src/main/res/values/strings.xml" ]; then
-            python3 -c "
-            import os, re
-            path = 'android/app/src/main/res/values/strings.xml'
-            app_name = os.environ.get('APP_NAME', 'PushtiPrakash')
-            if os.path.exists(path):
-                with open(path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                content = re.sub(r'<string name=\"app_name\">.*?</string>', f'<string name=\"app_name\">{app_name}</string>', content)
-                content = re.sub(r'<string name=\"title_activity_main\">.*?</string>', f'<string name=\"title_activity_main\">{app_name}</string>', content)
-                with open(path, 'w', encoding='utf-8') as f:
-                    f.write(content)
-            "
-          fi
+          python3 -c "
+          import os, re, glob
+          app_name = os.environ.get('APP_NAME', 'PushtiPrakash')
+          app_id = os.environ.get('APP_ID', 'com.pushtiprakash.reader')
 
-      - name: Stamp Version Code & Name in build.gradle
+          strings_path = 'android/app/src/main/res/values/strings.xml'
+          if os.path.exists(strings_path):
+              with open(strings_path, 'r', encoding='utf-8') as f:
+                  content = f.read()
+              content = re.sub(r'<string name=\"app_name\">.*?</string>', f'<string name=\"app_name\">{app_name}</string>', content)
+              content = re.sub(r'<string name=\"title_activity_main\">.*?</string>', f'<string name=\"title_activity_main\">{app_name}</string>', content)
+              content = re.sub(r'<string name=\"package_name\">.*?</string>', f'<string name=\"package_name\">{app_id}</string>', content)
+              content = re.sub(r'<string name=\"custom_url_scheme\">.*?</string>', f'<string name=\"custom_url_scheme\">{app_id}</string>', content)
+              with open(strings_path, 'w', encoding='utf-8') as f:
+                  f.write(content)
+
+          manifest_path = 'android/app/src/main/AndroidManifest.xml'
+          if os.path.exists(manifest_path):
+              with open(manifest_path, 'r', encoding='utf-8') as f:
+                  mcontent = f.read()
+              perms = [
+                  'android.permission.POST_NOTIFICATIONS',
+                  'android.permission.SCHEDULE_EXACT_ALARM',
+                  'android.permission.USE_EXACT_ALARM',
+                  'android.permission.RECEIVE_BOOT_COMPLETED',
+                  'android.permission.VIBRATE'
+              ]
+              missing_tags = []
+              for p in perms:
+                  if p not in mcontent:
+                      missing_tags.append(f'    <uses-permission android:name=\"{p}\" />')
+              if missing_tags and '</manifest>' in mcontent:
+                  mcontent = mcontent.replace('</manifest>', '\n'.join(missing_tags) + '\n</manifest>')
+                  with open(manifest_path, 'w', encoding='utf-8') as f:
+                      f.write(mcontent)
+
+          for ma_path in glob.glob('android/app/src/main/java/**/MainActivity.java', recursive=True):
+              with open(ma_path, 'r', encoding='utf-8') as f:
+                  ma = f.read()
+              if 'FLAG_SECURE' not in ma:
+                  if 'import android.os.Bundle;' not in ma:
+                      ma = ma.replace('import com.getcapacitor.BridgeActivity;', 'import android.os.Bundle;\nimport android.view.WindowManager;\nimport com.getcapacitor.BridgeActivity;')
+                  elif 'import android.view.WindowManager;' not in ma:
+                      ma = ma.replace('import android.os.Bundle;', 'import android.os.Bundle;\nimport android.view.WindowManager;')
+                  if 'onCreate(' in ma:
+                      ma = re.sub(r'(super\.onCreate\([^)]*\);)', r'\1\n        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);', ma)
+                  else:
+                      ma = ma.replace('BridgeActivity {', 'BridgeActivity {\n    @Override\n    public void onCreate(Bundle savedInstanceState) {\n        super.onCreate(savedInstanceState);\n        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);\n    }\n')
+                  with open(ma_path, 'w', encoding='utf-8') as f:
+                      f.write(ma)
+          "
+
+      - name: Stamp Application ID, Version Code & Name in build.gradle
+        env:
+          APP_ID: ${{ inputs.app_id }}
+          VERSION_CODE: ${{ inputs.version_code }}
+          BUILD_VERSION: ${{ inputs.build_version }}
         run: |
-          GRADLE_FILE="android/app/build.gradle"
-          if [ -f "$GRADLE_FILE" ]; then
-            sed -i "s|versionCode [0-9]*|versionCode ${{ inputs.version_code }}|g" "$GRADLE_FILE"
-            sed -i "s|versionName \".*\"|versionName \"${{ inputs.build_version }}\"|g" "$GRADLE_FILE"
-            echo "Updated build.gradle with versionCode ${{ inputs.version_code }} and versionName ${{ inputs.build_version }}"
-          fi
+          node -e '
+            const fs = require("fs");
+            const path = "android/app/build.gradle";
+            if (fs.existsSync(path)) {
+              let content = fs.readFileSync(path, "utf8");
+              const appId = String(process.env.APP_ID || "com.pushtiprakash.reader").trim();
+              const vCode = parseInt(process.env.VERSION_CODE || "1", 10) || 1;
+              const vName = String(process.env.BUILD_VERSION || "1.0.0").replace(/"/g, "");
+              content = content.replace(/applicationId\s+"[^"]*"/g, `applicationId "${appId}"`);
+              content = content.replace(/versionCode\s+\d+/g, `versionCode ${vCode}`);
+              content = content.replace(/versionName\s+"[^"]*"/g, `versionName "${vName}"`);
+              fs.writeFileSync(path, content, "utf8");
+              console.log(`Updated build.gradle: applicationId=${appId}, versionCode=${vCode}, versionName=${vName}`);
+            }
+          '
 
       - name: Stamp Android Launcher App Icon from Logo Location
+        env:
+          LOGO_URL: ${{ inputs.logo_url }}
         run: |
           mkdir -p /tmp
           if [ -f "src/assets/images/logo.png" ]; then
             echo "Found logo locally at src/assets/images/logo.png"
             cp src/assets/images/logo.png /tmp/logo.png
-          elif [ -n "${{ inputs.logo_url }}" ]; then
-            echo "Downloading logo from remote URL ${{ inputs.logo_url }}..."
-            curl -s -L "${{ inputs.logo_url }}" -o /tmp/logo.png || true
+          elif [ -n "$LOGO_URL" ]; then
+            echo "Downloading logo from remote URL $LOGO_URL..."
+            curl -s -L "$LOGO_URL" -o /tmp/logo.png || true
           fi
 
           if [ -s /tmp/logo.png ]; then
@@ -184,8 +266,8 @@ jobs:
             ALIAS_NAME="${KEY_ALIAS:-pushtikey}"
             PASS_VAL="$KS_PASS"
             KPASS_VAL="${KEY_PASS:-$KS_PASS}"
-          else
-            echo "Notice: GitHub Secrets not configured. Generating keystore for signing..."
+          elif [ "${{ inputs.allow_adhoc_signing }}" = "true" ]; then
+            echo "Warning: Using temporary ad-hoc keystore because allow_adhoc_signing=true (DO NOT upload to Play Store)."
             ALIAS_NAME="pushtikey"
             PASS_VAL=$(openssl rand -hex 16)
             KPASS_VAL="$PASS_VAL"
@@ -193,6 +275,9 @@ jobs:
               -alias "$ALIAS_NAME" -keyalg RSA -keysize 2048 -validity 10000 \
               -storepass "$PASS_VAL" -keypass "$KPASS_VAL" \
               -dname "CN=PushtiPrakash, OU=Mobile, O=Pushti, L=Mumbai, S=MH, C=IN"
+          else
+            echo "ERROR: ANDROID_KEYSTORE_BASE64 and KEYSTORE_PASSWORD secrets are required for release signing. Set allow_adhoc_signing=true only for internal test APKs."
+            exit 1
           fi
 
           # 1. Align and sign Release APK
@@ -227,7 +312,7 @@ jobs:
           if [[ "$CONFIG_URL" == *"cdn.jsdelivr.net/gh/"* ]]; then
             PURGE_BASE="${CONFIG_URL/https:\/\/cdn.jsdelivr.net\/gh\//https:\/\/purge.jsdelivr.net\/gh\/}"
             PURGE_BASE="${PURGE_BASE%/}/"
-            for f in app_identity.json supportedLanguages.json ui_translations.json books.json updateBannerMessage.json about_info.json notification_schedules.json; do
+            for f in app_identity.json supportedLanguages.json ui_translations.json books.json updateBannerMessage.json about_info.json notification_schedules.json advertisement.json auth_config.json; do
               curl -s "${PURGE_BASE}${f}" || true
             done
           fi
