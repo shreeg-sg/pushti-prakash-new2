@@ -86,31 +86,25 @@ interface AdSlideView {
             <span class="announcement-heading-text">
               {{ (uiText$ | async)?.['announcement_heading'] || 'Announcement' }}
             </span>
-            <span class="announcement-count-pill" *ngIf="banners.length > 1">{{ banners.length }}</span>
           </div>
 
           <div class="announcement-list">
             <div
               class="announcement-row"
               *ngFor="let banner of banners; let last = last; trackBy: trackByBannerId"
-              [class.announcement-row-divider]="!last"
-              [class.announcement-row-clickable]="hasBannerAction(banner)"
-              (click)="hasBannerAction(banner) ? onBannerClick(banner) : null">
-              <div class="announcement-meta-row" *ngIf="banner.isNew || banner.dateLabel">
-                <span class="banner-new-badge" *ngIf="banner.isNew">NEW</span>
-                <span class="banner-date-badge" *ngIf="banner.dateLabel">{{ banner.dateLabel }}</span>
-              </div>
-              <div class="announcement-body-line">
+              [class.announcement-row-divider]="!last">
+              <span class="banner-new-badge" *ngIf="banner.isNew">NEW</span>
+              <span class="announcement-message-inline">
                 <span class="banner-text" [innerHTML]="banner.messageHtml"></span>
                 <button
                   type="button"
                   class="inline-read-now-btn"
-                  *ngIf="hasBannerAction(banner)"
-                  (click)="onBannerActionButtonClick($event, banner)">
+                  *ngIf="banner.targetBookId"
+                  (click)="onBannerClick(banner)">
                   {{ banner.actionLabel || (uiText$ | async)?.['read_now'] || 'Read Now' }}
                   <ion-icon name="arrow-forward-outline"></ion-icon>
                 </button>
-              </div>
+              </span>
             </div>
           </div>
         </div>
@@ -142,7 +136,7 @@ interface AdSlideView {
 
                   <div class="chapter-count-badge">
                     <ion-icon name="book-outline"></ion-icon>
-                    <span>{{ book.chapters.length }} {{ (uiText$ | async)?.['chapters_label'] || 'Chapters' }}</span>
+                    <span>{{ book.chapterCount ?? book.chapters.length }} {{ (uiText$ | async)?.['chapters_label'] || 'Chapters' }}</span>
                   </div>
                 </div>
               </div>
@@ -272,25 +266,10 @@ interface AdSlideView {
       color: var(--ion-color-primary);
     }
 
-    .announcement-count-pill {
-      margin-left: auto;
-      font-size: 0.68rem;
-      font-weight: 800;
-      min-width: 20px;
-      height: 20px;
-      padding: 0 6px;
-      border-radius: 10px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(var(--ion-color-primary-rgb), 0.14);
-      color: var(--ion-color-primary);
-    }
-
     .announcement-list {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
     }
 
     .announcement-row {
@@ -298,66 +277,30 @@ interface AdSlideView {
       font-weight: 500;
       line-height: 1.5;
       word-break: break-word;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .announcement-row-clickable {
-      cursor: pointer;
     }
 
     .announcement-row-divider {
-      padding-bottom: 10px;
-      border-bottom: 1px dashed rgba(var(--ion-color-primary-rgb), 0.18);
-    }
-
-    .announcement-meta-row {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 6px;
+      padding-bottom: 8px;
+      border-bottom: 1px dashed rgba(var(--ion-color-primary-rgb), 0.16);
     }
 
     .banner-new-badge {
-      display: inline-flex;
-      align-items: center;
+      display: inline-block;
+      vertical-align: middle;
       background: var(--ion-color-primary, #8B2635);
       color: var(--ion-color-primary-contrast, #ffffff);
-      font-size: 0.62rem;
+      font-size: 0.64rem;
       font-weight: 800;
-      padding: 2px 7px;
-      border-radius: 6px;
-      letter-spacing: 0.5px;
+      padding: 1px 6px;
+      border-radius: 5px;
+      letter-spacing: 0.4px;
       text-transform: uppercase;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.14);
-      animation: bannerNewPulse 2.2s ease-in-out infinite;
+      margin-right: 6px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.12);
     }
 
-    @keyframes bannerNewPulse {
-      0%, 100% { transform: scale(1); opacity: 1; }
-      50% { transform: scale(1.05); opacity: 0.88; }
-    }
-
-    .banner-date-badge {
-      display: inline-flex;
-      align-items: center;
-      font-size: 0.66rem;
-      font-weight: 700;
-      padding: 1px 7px;
-      border-radius: 6px;
-      background: rgba(var(--ion-color-secondary-rgb, 212, 175, 55), 0.2);
-      color: var(--ion-color-medium, #6e4f42);
-    }
-
-    .announcement-body-line {
-      display: block;
-    }
-
-    :host ::ng-deep .banner-text a {
-      color: var(--ion-color-primary);
-      font-weight: 700;
-      text-decoration: underline;
+    .announcement-message-inline {
+      display: inline;
     }
 
     .banner-text {
@@ -834,35 +777,13 @@ export class DashboardPage implements OnInit, OnDestroy {
     return slide.ad.id;
   }
 
-  public hasBannerAction(banner: ActiveBannerView): boolean {
-    return !!(banner?.targetBookId || banner?.url);
-  }
-
-  public onBannerActionButtonClick(event: Event, banner: ActiveBannerView): void {
-    event.stopPropagation();
-    this.onBannerClick(banner);
-  }
-
   public onBannerClick(banner: ActiveBannerView): void {
-    if (banner.targetBookId) {
-      if (banner.targetChapterId) {
-        this.router.navigate(['/reader', banner.targetBookId, banner.targetChapterId]);
-      } else {
-        this.router.navigate(['/chapters', banner.targetBookId]);
-      }
-      return;
-    }
+    if (!banner.targetBookId) return;
 
-    if (banner.url) {
-      const rawUrl = banner.url.trim();
-      if (rawUrl.startsWith('/')) {
-        this.router.navigateByUrl(rawUrl);
-        return;
-      }
-      const safeUrl = SecurityUtil.sanitizeExternalUrl(rawUrl, true);
-      if (safeUrl) {
-        window.open(safeUrl, '_blank', 'noopener,noreferrer');
-      }
+    if (banner.targetChapterId) {
+      this.router.navigate(['/reader', banner.targetBookId, banner.targetChapterId]);
+    } else {
+      this.router.navigate(['/chapters', banner.targetBookId]);
     }
   }
 
