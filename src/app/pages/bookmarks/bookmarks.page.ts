@@ -178,7 +178,10 @@ export class BookmarksPage implements OnInit {
         const result: ResolvedBookmarkView[] = [];
         for (const entry of bookmarks) {
           const book = books.find(b => b.id === entry.bookId);
-          const chapter = book?.chapters.find(c => c.id === entry.chapterId);
+          if (book && (!book.chapters || book.chapters.length === 0)) {
+            this.dataService.ensureBookChaptersLoaded(book.id).catch(() => {});
+          }
+          const chapter = book?.chapters?.find(c => c.id === entry.chapterId);
           if (book && chapter) {
             result.push({
               bookId: book.id,
