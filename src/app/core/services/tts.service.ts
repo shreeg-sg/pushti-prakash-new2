@@ -26,6 +26,7 @@ export interface ChapterMediaMetadata {
   ttsLocale: string;
   audioUrl: string;
   transcript: string;
+  allowTts?: boolean;
 }
 
 @Injectable({
@@ -41,6 +42,7 @@ export class TtsService implements OnDestroy {
   private currentPlayableUrl = '';
   private wakeLockSentinel: any = null;
   private missingAudioUrls = new Set<string>();
+  private allowTtsFallback = true;
 
   private stateSubject = new BehaviorSubject<PlayerState>({
     mode: 'idle',
@@ -99,14 +101,15 @@ export class TtsService implements OnDestroy {
     await this.stop();
 
     this.activeMetadata = params;
+    this.allowTtsFallback = params.allowTts !== false;
     const cleanAudioUrl = (params.audioUrl || '').trim();
     this.activeTtsLocale = params.ttsLocale || this.mapLangToLocale(params.langCode);
-    this.ttsChunks = this.splitTranscriptIntoChunks(params.transcript || '');
+    this.ttsChunks = this.allowTtsFallback ? this.splitTranscriptIntoChunks(params.transcript || '') : [];
     this.currentChunkIndex = 0;
 
     if (cleanAudioUrl.length > 0) {
       await this.setupRecordedAudio(params.chapterId, params.langCode, cleanAudioUrl, wasPlaying);
-    } else {
+    } else if (this.allowTtsFallback) {
       this.patchState({
         mode: 'tts',
         isPlaying: false,
@@ -119,6 +122,16 @@ export class TtsService implements OnDestroy {
       if (wasPlaying) {
         await this.playTtsFromCurrentChunk();
       }
+    } else {
+      this.patchState({
+        mode: 'idle',
+        isPlaying: false,
+        isLoading: false,
+        currentTime: 0,
+        duration: 0,
+        activeChunkIndex: 0,
+        activeChunkText: ''
+      });
     }
   }
 
@@ -129,6 +142,18 @@ export class TtsService implements OnDestroy {
     autoPlay: boolean
   ): Promise<void> {
     if (this.missingAudioUrls.has(remoteUrl)) {
+      if (!this.allowTtsFallback) {
+        this.patchState({
+          mode: 'idle',
+          isPlaying: false,
+          isLoading: false,
+          currentTime: 0,
+          duration: 0,
+          activeChunkIndex: 0,
+          activeChunkText: ''
+        });
+        return;
+      }
       this.patchState({
         mode: 'tts',
         isPlaying: false,
@@ -308,6 +333,20 @@ export class TtsService implements OnDestroy {
   private switchToTtsFallback(): void {
     const wasIntendedToPlay = this.stateSubject.value.isPlaying;
     this.audioElement.pause();
+
+    if (!this.allowTtsFallback) {
+      this.releaseScreenWakeLock();
+      this.patchState({
+        mode: 'idle',
+        isLoading: false,
+        isPlaying: false,
+        currentTime: 0,
+        duration: 0,
+        activeChunkIndex: 0,
+        activeChunkText: ''
+      });
+      return;
+    }
 
     this.patchState({
       mode: 'tts',
