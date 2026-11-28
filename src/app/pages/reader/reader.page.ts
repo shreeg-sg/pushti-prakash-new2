@@ -83,7 +83,10 @@ import { SecurityUtil } from '../../core/utils/security.util';
         </ion-button>
       </div>
 
-      <div class="reader-body" *ngIf="!isChapterUnavailable && activeBook && activeChapter">
+      <div
+        class="reader-body"
+        [class.compact-dock-padding]="(playerState$ | async)?.mode === 'idle'"
+        *ngIf="!isChapterUnavailable && activeBook && activeChapter">
         <div class="book-breadcrumb">{{ localize(activeBook.title) }}</div>
         <h1 class="chapter-heading">{{ localize(activeChapter.title) }}</h1>
         <p *ngIf="activeChapter.subtitle" class="chapter-subheading">{{ localize(activeChapter.subtitle) }}</p>
@@ -153,7 +156,7 @@ import { SecurityUtil } from '../../core/utils/security.util';
         </ion-button>
       </div>
 
-      <div class="floating-audio-dock">
+      <div class="floating-audio-dock" *ngIf="state.mode !== 'idle'">
         <div class="player-meta-row">
           <ion-badge [color]="state.mode === 'audio' ? 'secondary' : 'tertiary'" class="mode-badge">
             <ion-icon [name]="state.mode === 'audio' ? 'volume-high-outline' : 'mic-outline'"></ion-icon>
@@ -245,6 +248,10 @@ import { SecurityUtil } from '../../core/utils/security.util';
       max-width: 780px;
       margin: 0 auto;
       padding-bottom: calc(270px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .reader-body.compact-dock-padding {
+      padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
       position: relative;
       z-index: 2;
       -webkit-user-select: none;
@@ -623,8 +630,10 @@ export class ReaderPage implements OnInit, OnDestroy {
     this.prevChapterId = idx > 0 ? chapters[idx - 1].id : undefined;
     this.nextChapterId = idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1].id : undefined;
 
-    const rawAudioUrl = this.dataService.localizeField(chapter.audioUrl, lang);
-    const resolvedAudioUrl = this.dataService.resolveMediaUrl(rawAudioUrl);
+    const isAudioEnabled = this.dataService.isAudioEnabledSnapshot();
+    const isTtsEnabled = this.dataService.isTtsEnabledSnapshot();
+    const rawAudioUrl = isAudioEnabled ? this.dataService.localizeField(chapter.audioUrl, lang) : '';
+    const resolvedAudioUrl = rawAudioUrl ? this.dataService.resolveMediaUrl(rawAudioUrl) : '';
     const resolvedCoverUrl = this.dataService.resolveMediaUrl(book.coverImageUrl);
 
     const autoPlay = this.shouldAutoPlayNext;
@@ -639,7 +648,8 @@ export class ReaderPage implements OnInit, OnDestroy {
         langCode: lang,
         ttsLocale,
         audioUrl: resolvedAudioUrl,
-        transcript: rawTranscript
+        transcript: rawTranscript,
+        allowTts: isTtsEnabled
       },
       autoPlay
     );
