@@ -1,0 +1,78 @@
+<div
+  class="splash-backdrop"
+  [class.fade-out]="fadingOut"
+  [class.slow-mode]="isSlowNetwork"
+  aria-hidden="true">
+  <div class="splash-center" *ngIf="(identity$ | async) as identity; else fallbackSplash">
+    <div class="book-stage">
+      <div class="book-logo-rise">
+        <img
+          [src]="getLogoUrl(identity)"
+          (error)="onLogoError($event)"
+          alt="App Logo"
+          class="splash-logo" />
+      </div>
+      <svg class="book-svg" viewBox="0 0 118 70" fill="none" aria-hidden="true">
+        <path
+          class="book-left-page"
+          d="M59 54 C43 46 23 46 9 52 L15 20 C29 15 45 16 59 24 Z"
+          stroke-width="2.5"
+          stroke-linejoin="round" />
+        <path
+          class="book-right-page"
+          d="M59 54 C75 46 95 46 109 52 L103 20 C89 15 73 16 59 24 Z"
+          stroke-width="2.5"
+          stroke-linejoin="round" />
+        <line
+          class="book-spine"
+          x1="59"
+          y1="24"
+          x2="59"
+          y2="54"
+          stroke-width="3"
+          stroke-linecap="round" />
+      </svg>
+    </div>
+
+    <div class="book-title-reveal">
+      <h1 class="splash-title" *ngIf="getAppTitle(identity) as title">{{ title }}</h1>
+    </div>
+
+    <div class="progress-track">
+      <div class="progress-bar"></div>
+    </div>
+  </div>
+
+  <ng-template #fallbackSplash>
+    <div class="splash-center">
+      <div class="book-stage">
+        <div class="book-logo-rise">
+          <img [src]="fallbackLogo" alt="App Logo" class="splash-logo" />
+        </div>
+        <svg class="book-svg" viewBox="0 0 118 70" fill="none" aria-hidden="true">
+          <path
+            class="book-left-page"
+            d="M59 54 C43 46 23 46 9 52 L15 20 C29 15 45 16 59 24 Z"
+            stroke-width="2.5"
+            stroke-linejoin="round" />
+          <path
+            class="book-right-page"
+            d="M59 54 C75 46 95 46 109 52 L103 20 C89 15 73 16 59 24 Z"
+            stroke-width="2.5"
+            stroke-linejoin="round" />
+          <line
+            class="book-spine"
+            x1="59"
+            y1="24"
+            x2="59"
+            y2="54"
+            stroke-width="3"
+            stroke-linecap="round" />
+        </svg>
+      </div>
+      <div class="progress-track">
+        <div class="progress-bar"></div>
+      </div>
+    </div>
+  </ng-template>
+</div>
