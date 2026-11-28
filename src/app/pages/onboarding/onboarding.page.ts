@@ -282,6 +282,7 @@ export class OnboardingPage implements OnInit {
 
   public onSelectLanguage(code: string): void {
     this.selectedLang = code;
+    this.storageService.previewLanguage(code);
   }
 
   public async onContinue(): Promise<void> {
