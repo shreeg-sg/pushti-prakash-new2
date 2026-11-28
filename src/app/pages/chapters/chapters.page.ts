@@ -399,6 +399,9 @@ export class ChaptersPage implements OnInit, OnDestroy {
       if (this.activeBook) {
         this.isBookUnavailable = false;
         this.activeBookTitle = this.localize(this.activeBook.title);
+        if (!this.activeBook.chapters || this.activeBook.chapters.length === 0) {
+          this.dataService.ensureBookChaptersLoaded(this.activeBook.id).catch(() => {});
+        }
       } else {
         this.isBookUnavailable = true;
         this.activeBookTitle = '';
