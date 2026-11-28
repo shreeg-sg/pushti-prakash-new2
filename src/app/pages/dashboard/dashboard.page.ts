@@ -99,7 +99,7 @@ interface AdSlideView {
                 <button
                   type="button"
                   class="inline-read-now-btn"
-                  *ngIf="banner.targetBookId"
+                  *ngIf="banner.targetBookId || banner.url"
                   (click)="onBannerClick(banner)">
                   {{ banner.actionLabel || (uiText$ | async)?.['read_now'] || 'Read Now' }}
                   <ion-icon name="arrow-forward-outline"></ion-icon>
@@ -778,12 +778,23 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   public onBannerClick(banner: ActiveBannerView): void {
-    if (!banner.targetBookId) return;
-
-    if (banner.targetChapterId) {
-      this.router.navigate(['/reader', banner.targetBookId, banner.targetChapterId]);
-    } else {
-      this.router.navigate(['/chapters', banner.targetBookId]);
+    if (banner.targetBookId) {
+      if (banner.targetChapterId) {
+        this.router.navigate(['/reader', banner.targetBookId, banner.targetChapterId]);
+      } else {
+        this.router.navigate(['/chapters', banner.targetBookId]);
+      }
+      return;
+    }
+    if (banner.url) {
+      if (banner.url.startsWith('/')) {
+        this.router.navigateByUrl(banner.url);
+      } else {
+        const safeUrl = SecurityUtil.sanitizeExternalUrl(banner.url);
+        if (safeUrl) {
+          window.open(safeUrl, '_blank', 'noopener,noreferrer');
+        }
+      }
     }
   }
 
@@ -794,6 +805,17 @@ export class DashboardPage implements OnInit, OnDestroy {
   public onSearchQueryChange(query: string): void {
     this.currentSearchQuery = query;
     this.searchSubject.next(query);
+    if ((query || '').trim().length >= 2) {
+      firstValueFrom(this.visibleBooks$)
+        .then(books => {
+          for (const b of books || []) {
+            if (!b.chapters || b.chapters.length === 0) {
+              this.dataService.ensureBookChaptersLoaded(b.id).catch(() => {});
+            }
+          }
+        })
+        .catch(() => {});
+    }
   }
 
   public getSearchPlaceholder(): string {
