@@ -13,7 +13,8 @@ import {
   IonLabel,
   IonAccordionGroup,
   IonAccordion,
-  MenuController
+  MenuController,
+  AlertController
 } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
@@ -22,13 +23,15 @@ import {
   calendarOutline,
   informationCircleOutline,
   bookOutline,
-  documentTextOutline
+  documentTextOutline,
+  logOutOutline
 } from 'ionicons/icons';
-import { Observable, Subscription, combineLatest } from 'rxjs';
+import { Observable, Subscription, combineLatest, firstValueFrom } from 'rxjs';
 import { filter, map, startWith } from 'rxjs/operators';
 
 import { DataService } from '../core/services/data.service';
 import { StorageService } from '../core/services/storage.service';
+import { AuthService } from '../core/services/auth.service';
 import { AppIdentity, Book, Chapter } from '../core/models/app-config.model';
 import { FooterComponent } from './footer.component';
 
@@ -87,12 +90,13 @@ import { FooterComponent } from './footer.component';
         </ion-item>
 
         <ion-item
+          *ngIf="(calendarEnabled$ | async) !== false"
           button
           detail="false"
           [class.active-menu-item]="(activePath$ | async) === '/tippani'"
           (click)="navigateTo(['/tippani'])">
           <ion-icon slot="start" name="calendar-outline" class="nav-icon"></ion-icon>
-          <ion-label class="ion-text-wrap">{{ (uiText$ | async)?.['nav_tippani'] || 'Tippani' }}</ion-label>
+          <ion-label class="ion-text-wrap">{{ (uiText$ | async)?.['nav_tippani'] || 'Calendar' }}</ion-label>
         </ion-item>
 
         <ion-item
@@ -102,6 +106,15 @@ import { FooterComponent } from './footer.component';
           (click)="navigateTo(['/about'])">
           <ion-icon slot="start" name="information-circle-outline" class="nav-icon"></ion-icon>
           <ion-label class="ion-text-wrap">{{ (uiText$ | async)?.['nav_about'] || 'About Us' }}</ion-label>
+        </ion-item>
+
+        <ion-item
+          *ngIf="canLogout"
+          button
+          detail="false"
+          (click)="onLogoutClick()">
+          <ion-icon slot="start" name="log-out-outline" class="nav-icon"></ion-icon>
+          <ion-label class="ion-text-wrap">{{ (uiText$ | async)?.['nav_logout'] || 'Switch Account / Logout' }}</ion-label>
         </ion-item>
       </ion-list>
 
@@ -238,12 +251,15 @@ import { FooterComponent } from './footer.component';
 export class SidebarComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private menuCtrl = inject(MenuController);
+  private alertCtrl = inject(AlertController);
   public dataService = inject(DataService);
   private storageService = inject(StorageService);
+  private authService = inject(AuthService);
 
   public identity$: Observable<AppIdentity> = this.dataService.identity$;
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
   public visibleBooks$: Observable<Book[]> = this.dataService.visibleBooks$;
+  public calendarEnabled$: Observable<boolean> = this.dataService.calendarEnabled$;
 
   public activePath$!: Observable<string>;
   public activeBookId$!: Observable<string | undefined>;
@@ -258,7 +274,8 @@ export class SidebarComponent implements OnInit, OnDestroy {
       calendarOutline,
       informationCircleOutline,
       bookOutline,
-      documentTextOutline
+      documentTextOutline,
+      logOutOutline
     });
   }
 
@@ -296,6 +313,29 @@ export class SidebarComponent implements OnInit, OnDestroy {
   public async navigateTo(commands: string[]): Promise<void> {
     await this.router.navigate(commands);
     await this.menuCtrl.close();
+  }
+
+  public get canLogout(): boolean {
+    return this.authService.isLoginRequired() && !!this.authService.getSessionSnapshot();
+  }
+
+  public async onLogoutClick(): Promise<void> {
+    const uiText = await firstValueFrom(this.uiText$).catch(() => ({} as Record<string, string>));
+    const alert = await this.alertCtrl.create({
+      header: uiText['logout_confirm_title'] || 'Logout',
+      message: uiText['logout_confirm_message'] || 'Are you sure you want to logout from this device?',
+      buttons: [
+        { text: uiText['cancel_button'] || 'Cancel', role: 'cancel' },
+        {
+          text: uiText['ok_button'] || 'OK',
+          handler: async () => {
+            await this.menuCtrl.close();
+            await this.authService.logout();
+          }
+        }
+      ]
+    });
+    await alert.present();
   }
 
   public async openChapter(bookId: string, chapterId: string): Promise<void> {
