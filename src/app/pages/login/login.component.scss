@@ -1,0 +1,100 @@
+.login-bg {
+  --background: var(--ion-background-color, #fffdf9);
+}
+
+.login-wrapper {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top, 12px) 0 env(safe-area-inset-bottom, 12px);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 460px;
+  border-radius: 20px;
+  padding: 16px 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+  background: var(--ion-card-background, #fff8ec);
+  border: 1px solid rgba(var(--ion-color-primary-rgb, 139, 38, 53), 0.15);
+}
+
+.logo-stage {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.login-logo {
+  width: 84px;
+  height: 84px;
+  border-radius: 18px;
+  object-fit: contain;
+  background: #ffffff;
+  padding: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+.login-header {
+  text-align: center;
+  padding-bottom: 8px;
+}
+
+.login-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--ion-color-primary, #8B2635);
+}
+
+.login-subtitle {
+  margin-top: 4px;
+  font-size: 0.92rem;
+  color: var(--ion-color-medium, #6e4f42);
+}
+
+.login-field {
+  --background: #ffffff;
+  --border-radius: 12px;
+  --padding-start: 12px;
+  --padding-end: 12px;
+  margin-bottom: 12px;
+  border: 1.5px solid rgba(var(--ion-color-primary-rgb, 139, 38, 53), 0.18);
+  border-radius: 12px;
+}
+
+.field-icon {
+  color: var(--ion-color-primary, #8B2635);
+  margin-top: 18px;
+  margin-right: 8px;
+  font-size: 1.2rem;
+}
+
+.error-banner {
+  margin: 8px 0 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(185, 28, 28, 0.08);
+  border: 1px solid rgba(185, 28, 28, 0.28);
+  color: #b91c1c;
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-align: center;
+}
+
+.submit-btn {
+  margin-top: 16px;
+  --border-radius: 12px;
+  --background: var(--ion-color-primary, #8B2635);
+  --background-activated: var(--ion-color-primary-shade, #7a212f);
+  --background-focused: var(--ion-color-primary-shade, #7a212f);
+  --background-hover: var(--ion-color-primary-tint, #973c49);
+  --color: var(--ion-color-primary-contrast, #ffffff);
+  font-weight: 700;
+  height: 48px;
+}
+
+.btn-spinner {
+  width: 22px;
+  height: 22px;
+}
