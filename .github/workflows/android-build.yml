@@ -40,6 +40,11 @@ on:
         required: true
         default: '2'
         type: string
+      allow_adhoc_signing:
+        description: 'Allow temporary self-signed keystore when GitHub Secrets are not set (Debug/Test ONLY)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build-client-android:
@@ -63,7 +68,7 @@ jobs:
           java-version: '17'
 
       - name: Install NPM Dependencies
-        run: npm ci
+        run: npm ci || npm install --no-audit --no-fund
 
       - name: Inject Client Config URL & Version into environment.prod.ts
         env:
@@ -82,6 +87,23 @@ jobs:
             fs.writeFileSync(path, content, "utf8");
           '
           cat src/environments/environment.prod.ts
+          APP_NAME="${{ inputs.app_name }}" FIREBASE_URL="${{ inputs.firebase_config_url }}" node -e '
+            const fs = require("fs");
+            const idxPath = "src/index.html";
+            let html = fs.readFileSync(idxPath, "utf8");
+            const appName = String(process.env.APP_NAME || "").trim();
+            if (appName) {
+              const esc = appName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+              html = html.replace(/<title>.*?<\/title>/, `<title>${esc}</title>`);
+            }
+            try {
+              const origin = new URL(process.env.FIREBASE_URL || "").origin;
+              if (origin && origin.startsWith("https://") && !html.includes(origin)) {
+                html = html.replace(/https:\/\/cdn\.jsdelivr\.net/g, `https://cdn.jsdelivr.net ${origin}`);
+              }
+            } catch {}
+            fs.writeFileSync(idxPath, html, "utf8");
+          '
 
       - name: Stamp Client App ID and Name in Capacitor Config
         env:
@@ -244,8 +266,8 @@ jobs:
             ALIAS_NAME="${KEY_ALIAS:-pushtikey}"
             PASS_VAL="$KS_PASS"
             KPASS_VAL="${KEY_PASS:-$KS_PASS}"
-          else
-            echo "Notice: GitHub Secrets not configured. Generating keystore for signing..."
+          elif [ "${{ inputs.allow_adhoc_signing }}" = "true" ]; then
+            echo "Warning: Using temporary ad-hoc keystore because allow_adhoc_signing=true (DO NOT upload to Play Store)."
             ALIAS_NAME="pushtikey"
             PASS_VAL=$(openssl rand -hex 16)
             KPASS_VAL="$PASS_VAL"
@@ -253,6 +275,9 @@ jobs:
               -alias "$ALIAS_NAME" -keyalg RSA -keysize 2048 -validity 10000 \
               -storepass "$PASS_VAL" -keypass "$KPASS_VAL" \
               -dname "CN=PushtiPrakash, OU=Mobile, O=Pushti, L=Mumbai, S=MH, C=IN"
+          else
+            echo "ERROR: ANDROID_KEYSTORE_BASE64 and KEYSTORE_PASSWORD secrets are required for release signing. Set allow_adhoc_signing=true only for internal test APKs."
+            exit 1
           fi
 
           # 1. Align and sign Release APK
@@ -287,7 +312,7 @@ jobs:
           if [[ "$CONFIG_URL" == *"cdn.jsdelivr.net/gh/"* ]]; then
             PURGE_BASE="${CONFIG_URL/https:\/\/cdn.jsdelivr.net\/gh\//https:\/\/purge.jsdelivr.net\/gh\/}"
             PURGE_BASE="${PURGE_BASE%/}/"
-            for f in app_identity.json supportedLanguages.json ui_translations.json books.json updateBannerMessage.json about_info.json notification_schedules.json; do
+            for f in app_identity.json supportedLanguages.json ui_translations.json books.json updateBannerMessage.json about_info.json notification_schedules.json advertisement.json auth_config.json; do
               curl -s "${PURGE_BASE}${f}" || true
             done
           fi
