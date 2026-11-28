@@ -58,8 +58,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          npm ci
-          npm install @capacitor/ios@^6.0.0 --save-dev
+          npm ci || npm install --no-audit --no-fund
 
       - name: Inject Client Config URL & Version into environment.prod.ts
         env:
@@ -78,6 +77,23 @@ jobs:
             fs.writeFileSync(path, content, "utf8");
           '
           cat src/environments/environment.prod.ts
+          APP_NAME="${{ inputs.app_name }}" FIREBASE_URL="${{ inputs.firebase_config_url }}" node -e '
+            const fs = require("fs");
+            const idxPath = "src/index.html";
+            let html = fs.readFileSync(idxPath, "utf8");
+            const appName = String(process.env.APP_NAME || "").trim();
+            if (appName) {
+              const esc = appName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+              html = html.replace(/<title>.*?<\/title>/, `<title>${esc}</title>`);
+            }
+            try {
+              const origin = new URL(process.env.FIREBASE_URL || "").origin;
+              if (origin && origin.startsWith("https://") && !html.includes(origin)) {
+                html = html.replace(/https:\/\/cdn\.jsdelivr\.net/g, `https://cdn.jsdelivr.net ${origin}`);
+              }
+            } catch {}
+            fs.writeFileSync(idxPath, html, "utf8");
+          '
 
       - name: Stamp Client App ID and Name in Capacitor Config
         env:
@@ -219,16 +235,95 @@ jobs:
             echo "Warning: Logo PNG not found, defaulting to template icons."
           fi
 
-      - name: Build and Archive iOS Project
+      - name: Build, Archive & Sign iOS IPA (Uses Apple GitHub Secrets When Configured)
+        env:
+          P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
+          P12_PASS: ${{ secrets.IOS_P12_PASSWORD }}
+          PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+          APP_ID: ${{ inputs.app_id }}
         run: |
-          cd ios/App
-          xcodebuild -workspace App.xcworkspace \
-            -scheme App \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            -archivePath build/App.xcarchive \
-            archive \
-            CODE_SIGNING_ALLOWED=NO
+          if [ -n "$P12_BASE64" ] && [ -n "$P12_PASS" ] && [ -n "$PROFILE_BASE64" ] && [ -n "$TEAM_ID" ]; then
+            echo "Apple signing secrets detected — configuring temporary keychain and provisioning profile..."
+            KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+            KEYCHAIN_PASS=$(openssl rand -hex 16)
+            CERT_PATH="$RUNNER_TEMP/dist_cert.p12"
+            PROFILE_PATH="$RUNNER_TEMP/app_profile.mobileprovision"
+
+            echo "$P12_BASE64" | base64 --decode > "$CERT_PATH"
+            echo "$PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+
+            security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+            security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+            security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+            security import "$CERT_PATH" -P "$P12_PASS" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+            security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+            security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+            mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+            PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin <<< $(security cms -D -i "$PROFILE_PATH"))
+            PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' /dev/stdin <<< $(security cms -D -i "$PROFILE_PATH"))
+            cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision"
+
+            cat << EOF > "$RUNNER_TEMP/ExportOptions.plist"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${APP_ID}</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+
+            cd ios/App
+            xcodebuild -workspace App.xcworkspace \
+              -scheme App \
+              -configuration Release \
+              -destination 'generic/platform=iOS' \
+              -archivePath build/App.xcarchive \
+              archive \
+              DEVELOPMENT_TEAM="$TEAM_ID" \
+              CODE_SIGN_STYLE=Manual \
+              CODE_SIGN_IDENTITY="Apple Distribution" \
+              PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
+
+            xcodebuild -exportArchive \
+              -archivePath build/App.xcarchive \
+              -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+              -exportPath build/ipa
+
+            rm -f "$CERT_PATH" "$PROFILE_PATH" "$RUNNER_TEMP/ExportOptions.plist"
+            security delete-keychain "$KEYCHAIN_PATH" || true
+            echo "Signed iOS IPA exported successfully!"
+          else
+            echo "Notice: Apple signing secrets (IOS_P12_BASE64, IOS_P12_PASSWORD, IOS_PROVISIONING_PROFILE_BASE64, IOS_TEAM_ID) not configured. Building unsigned xcarchive."
+            cd ios/App
+            xcodebuild -workspace App.xcworkspace \
+              -scheme App \
+              -configuration Release \
+              -destination 'generic/platform=iOS' \
+              -archivePath build/App.xcarchive \
+              archive \
+              CODE_SIGNING_ALLOWED=NO
+          fi
+
+      - name: Upload Signed iOS IPA (When Signed)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.client_key }}-signed-ipa-v${{ inputs.build_version }}
+          path: ios/App/build/ipa/*.ipa
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Purge jsDelivr CDN Cache for Active Tenant
         env:
@@ -237,7 +332,7 @@ jobs:
           if [[ "$CONFIG_URL" == *"cdn.jsdelivr.net/gh/"* ]]; then
             PURGE_BASE="${CONFIG_URL/https:\/\/cdn.jsdelivr.net\/gh\//https:\/\/purge.jsdelivr.net\/gh\/}"
             PURGE_BASE="${PURGE_BASE%/}/"
-            for f in app_identity.json supportedLanguages.json ui_translations.json books.json updateBannerMessage.json about_info.json notification_schedules.json; do
+            for f in app_identity.json supportedLanguages.json ui_translations.json books.json updateBannerMessage.json about_info.json notification_schedules.json advertisement.json auth_config.json; do
               curl -s "${PURGE_BASE}${f}" || true
             done
           fi
