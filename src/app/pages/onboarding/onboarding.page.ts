@@ -18,6 +18,7 @@ import { Observable } from 'rxjs';
 
 import { DataService } from '../../core/services/data.service';
 import { StorageService } from '../../core/services/storage.service';
+import { AuthService } from '../../core/services/auth.service';
 import { AppIdentity, SupportedLanguage } from '../../core/models/app-config.model';
 
 @Component({
@@ -243,6 +244,7 @@ export class OnboardingPage implements OnInit {
   private router = inject(Router);
   public dataService = inject(DataService);
   private storageService = inject(StorageService);
+  private authService = inject(AuthService);
 
   public identity$: Observable<AppIdentity> = this.dataService.identity$;
   public uiText$: Observable<Record<string, string>> = this.dataService.uiText$;
@@ -285,7 +287,18 @@ export class OnboardingPage implements OnInit {
   public async onContinue(): Promise<void> {
     if (!this.selectedLang) return;
     await this.storageService.completeOnboarding(this.selectedLang);
-    await this.router.navigate(['/dashboard'], { replaceUrl: true });
+    await this.authService.isReady();
+    if (!this.authService.getAuthConfig()) {
+      await Promise.race([
+        this.dataService.initialize().catch(() => {}),
+        new Promise(resolve => setTimeout(resolve, 3000))
+      ]);
+    }
+    if (this.authService.isLoginRequired() && !this.authService.isLoggedInSnapshot()) {
+      await this.router.navigate(['/login'], { replaceUrl: true });
+    } else {
+      await this.router.navigate(['/dashboard'], { replaceUrl: true });
+    }
   }
 
   public localize(mapObj: Record<string, string> | undefined): string {
