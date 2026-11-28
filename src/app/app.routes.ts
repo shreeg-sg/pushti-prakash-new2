@@ -1,29 +1,54 @@
 import { inject } from '@angular/core';
 import { Routes, CanActivateFn, Router } from '@angular/router';
 import { StorageService } from './core/services/storage.service';
+import { AuthService } from './core/services/auth.service';
 import { ShellComponent } from './layout/shell.component';
 
 export const onboardingGuard: CanActivateFn = async () => {
   const storageService = inject(StorageService);
+  const authService = inject(AuthService);
   const router = inject(Router);
 
   // Await local preferences hydration before evaluating route
-  await storageService.isReady();
+  await Promise.all([storageService.isReady(), authService.isReady()]);
 
   if (!storageService.hasCompletedOnboardingSnapshot()) {
     return router.createUrlTree(['/onboarding']);
+  }
+  if (authService.isLoginRequired() && !authService.isLoggedInSnapshot()) {
+    return router.createUrlTree(['/login']);
   }
   return true;
 };
 
 export const alreadyOnboardedGuard: CanActivateFn = async () => {
   const storageService = inject(StorageService);
+  const authService = inject(AuthService);
   const router = inject(Router);
 
-  await storageService.isReady();
+  await Promise.all([storageService.isReady(), authService.isReady()]);
 
   // If already onboarded, don't allow returning to onboarding on cold boot
   if (storageService.hasCompletedOnboardingSnapshot()) {
+    if (authService.isLoginRequired() && !authService.isLoggedInSnapshot()) {
+      return router.createUrlTree(['/login']);
+    }
+    return router.createUrlTree(['/dashboard']);
+  }
+  return true;
+};
+
+export const loginGuard: CanActivateFn = async () => {
+  const storageService = inject(StorageService);
+  const authService = inject(AuthService);
+  const router = inject(Router);
+
+  await Promise.all([storageService.isReady(), authService.isReady()]);
+
+  if (!storageService.hasCompletedOnboardingSnapshot()) {
+    return router.createUrlTree(['/onboarding']);
+  }
+  if (!authService.isLoginRequired() || authService.isLoggedInSnapshot()) {
     return router.createUrlTree(['/dashboard']);
   }
   return true;
@@ -35,6 +60,12 @@ export const routes: Routes = [
     canActivate: [alreadyOnboardedGuard],
     loadComponent: () =>
       import('./pages/onboarding/onboarding.page').then(m => m.OnboardingPage)
+  },
+  {
+    path: 'login',
+    canActivate: [loginGuard],
+    loadComponent: () =>
+      import('./pages/login/login.component').then(m => m.LoginComponent)
   },
   {
     path: '',
